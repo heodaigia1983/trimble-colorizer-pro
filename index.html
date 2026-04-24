@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>IFC Color Studio</title>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    :root{--bg:#0e1117;--surface:#181c26;--card:#1e2330;--border:#2a3045;--text:#e4e8f0;--muted:#52596e;--accent:#4f8ef7;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-size:12.5px;padding:13px;min-height:100vh}
+
+    .hd{display:flex;align-items:center;gap:10px;margin-bottom:15px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+    .hd-icon{width:36px;height:36px;border-radius:10px;flex-shrink:0;background:linear-gradient(135deg,#6c63ff,#4f8ef7);display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 10px rgba(79,142,247,.3)}
+    .hd-name{font-size:14px;font-weight:700;letter-spacing:-.3px}
+    .hd-sub{font-size:10px;color:var(--muted);margin-top:2px}
+
+    /* Slot */
+    .slot{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 12px;margin-bottom:10px}
+    .slot-header{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+    .slot-num{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+    .slot-title{font-size:11.5px;font-weight:600;flex:1}
+    .slot-count{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace}
+
+    /* Color row */
+    .color-row{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+    .color-label{font-size:10.5px;color:var(--muted);white-space:nowrap}
+    .color-swatch{width:26px;height:26px;border-radius:7px;border:2px solid rgba(255,255,255,.15);cursor:pointer;flex-shrink:0;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.3);position:relative}
+    .color-swatch:hover{transform:scale(1.1)}
+    .color-swatch input[type=color]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;border:none;padding:0}
+    .color-hex{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 7px;width:75px;outline:none;transition:border-color .2s}
+    .color-hex:focus{border-color:var(--accent)}
+    .presets{display:flex;gap:4px;margin-left:2px;flex-wrap:wrap}
+    .preset{width:17px;height:17px;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:transform .15s,border-color .15s;flex-shrink:0}
+    .preset:hover{transform:scale(1.25);border-color:rgba(255,255,255,.5)}
+
+    /* Upload zone */
+    .upload-zone{border:1.5px dashed var(--border);border-radius:8px;padding:9px 11px;cursor:pointer;transition:border-color .2s,background .2s;text-align:center;position:relative;margin-bottom:8px}
+    .upload-zone:hover,.upload-zone.over{border-color:var(--accent);background:rgba(79,142,247,.05)}
+    .upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+    .upload-icon{font-size:15px;margin-bottom:3px}
+    .upload-hint{font-size:11px;color:var(--muted)}
+    .upload-hint b{color:var(--accent)}
+
+    /* File list */
+    .file-list{display:flex;flex-direction:column;gap:4px}
+    .file-item{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:5px 8px}
+    .file-item-name{font-size:10.5px;font-family:'JetBrains Mono',monospace;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .file-item-count{font-size:10px;color:var(--muted);white-space:nowrap}
+    .file-item-del{width:16px;height:16px;border-radius:4px;background:rgba(255,95,95,.15);color:#ff5f5f;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;padding:0;font-family:inherit;transition:background .15s}
+    .file-item-del:hover{background:rgba(255,95,95,.3)}
+    .file-item-ok{color:#52d68a;font-size:10px}
+
+    /* Stats */
+    .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:11px}
+    .scard{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:8px 10px}
+    .slabel{font-size:9.5px;color:var(--muted);margin-bottom:3px}
+    .sval{font-size:17px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1;color:var(--text)}
+
+    /* Progress */
+    .prog-wrap{height:3px;background:var(--border);border-radius:2px;margin-bottom:11px;overflow:hidden;display:none}
+    .prog-wrap.on{display:block}
+    .prog-bar{height:100%;width:0;background:linear-gradient(90deg,#6c63ff,#4f8ef7);border-radius:2px;transition:width .3s}
+
+    /* Buttons */
+    .btn-row{display:flex;gap:7px;margin-bottom:10px}
+    button{flex:1;padding:9px 6px;border:none;border-radius:8px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s,transform .1s}
+    button:active{transform:scale(.96)}button:disabled{opacity:.35;cursor:not-allowed}
+    #applyBtn{background:linear-gradient(135deg,#6c63ff,#4f8ef7);color:#fff;box-shadow:0 2px 10px rgba(108,99,255,.3)}
+    #resetBtn{background:var(--card);color:var(--text);border:1px solid var(--border)}
+    #saveBtn{background:var(--card);color:var(--accent);border:1px solid var(--accent)}
+
+    .field{margin-bottom:10px}
+    .flabel{font-size:10.5px;color:var(--muted);margin-bottom:4px}
+    input[type=text]{width:100%;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;transition:border-color .2s}
+    input[type=text]:focus{border-color:var(--accent)}
+
+    .log-title{font-size:10px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+    #log{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 11px;height:130px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.65;color:var(--muted);white-space:pre-wrap;word-break:break-all}
+    #log .ok{color:#52d68a}#log .info{color:var(--accent)}#log .warn{color:#f5a623}#log .err{color:#ff5f5f}
+    #log::-webkit-scrollbar{width:3px}#log::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+    .divider{height:1px;background:var(--border);margin:11px 0}
+    .footer{margin-top:12px;font-size:10px;color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+
+<div class="hd">
+  <div class="hd-icon">🎨</div>
+  <div>
+    <div class="hd-name">IFC Color Studio</div>
+    <div class="hd-sub">Developed by Le Van Thao</div>
+  </div>
+</div>
+
+<!-- SLOT 1 -->
+<div class="slot" id="slot1">
+  <div class="slot-header">
+    <div class="slot-num" id="num1" style="background:#00FF00;color:#000">1</div>
+    <div class="slot-title">Nhóm màu 1</div>
+    <div class="slot-count" id="count1">0 file · 0 GUID</div>
+  </div>
+  <div class="color-row">
+    <span class="color-label">Màu:</span>
+    <div class="color-swatch" id="swatch1" style="background:#00FF00">
+      <input type="color" id="picker1" value="#00FF00"/>
+    </div>
+    <input type="text" class="color-hex" id="hex1" value="#00FF00" maxlength="7"/>
+    <div class="presets" id="presets1"></div>
+  </div>
+  <div class="upload-zone" id="zone1">
+    <input type="file" id="file1" accept=".xls,.xlsx" multiple/>
+    <div class="upload-icon">📂</div>
+    <div class="upload-hint">Chọn hoặc kéo thả <b>nhiều file Excel</b></div>
+  </div>
+  <div class="file-list" id="flist1"></div>
+</div>
+
+<!-- SLOT 2 -->
+<div class="slot" id="slot2">
+  <div class="slot-header">
+    <div class="slot-num" id="num2" style="background:#0088FF;color:#fff">2</div>
+    <div class="slot-title">Nhóm màu 2</div>
+    <div class="slot-count" id="count2">0 file · 0 GUID</div>
+  </div>
+  <div class="color-row">
+    <span class="color-label">Màu:</span>
+    <div class="color-swatch" id="swatch2" style="background:#0088FF">
+      <input type="color" id="picker2" value="#0088FF"/>
+    </div>
+    <input type="text" class="color-hex" id="hex2" value="#0088FF" maxlength="7"/>
+    <div class="presets" id="presets2"></div>
+  </div>
+  <div class="upload-zone" id="zone2">
+    <input type="file" id="file2" accept=".xls,.xlsx" multiple/>
+    <div class="upload-icon">📂</div>
+    <div class="upload-hint">Chọn hoặc kéo thả <b>nhiều file Excel</b></div>
+  </div>
+  <div class="file-list" id="flist2"></div>
+</div>
+
+<div class="divider"></div>
+
+<div class="stats">
+  <div class="scard"><div class="slabel">Tổng cấu kiện</div><div class="sval" id="s-total">—</div></div>
+  <div class="scard"><div class="slabel" id="lbl1">Nhóm 1</div><div class="sval" id="s-c1" style="color:#00FF00">—</div></div>
+  <div class="scard"><div class="slabel" id="lbl2">Nhóm 2</div><div class="sval" id="s-c2" style="color:#0088FF">—</div></div>
+</div>
+
+<div class="prog-wrap" id="progWrap"><div class="prog-bar" id="progBar"></div></div>
+
+<div class="btn-row">
+  <button id="applyBtn" disabled>▶ Áp màu</button>
+  <button id="resetBtn">↺ Reset</button>
+</div>
+
+<div class="field">
+  <div class="flabel">Tên view muốn lưu (tuỳ chọn)</div>
+  <input type="text" id="viewName" placeholder="Ví dụ: ColorStudio 2026-04-24"/>
+</div>
+<div class="btn-row" style="margin-bottom:0">
+  <button id="saveBtn">💾 Save View</button>
+</div>
+
+<div class="divider"></div>
+<div class="log-title">Log</div>
+<div id="log"></div>
+<div class="footer">IFC Color Studio v2.0 · Le Van Thao</div>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>
