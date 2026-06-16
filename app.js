@@ -269,10 +269,21 @@ async function paintSlot(slot){
 
 /* ═══ Quantities (Qto) ═══ */
 var BATCH_PROP = 200;
-var QTY_PATTERNS = { volume: /NetVolume|GrossVolume|^Volume$/i, weight: /NetWeight|GrossWeight|^Weight$/i };
+var QTY_PATTERNS = {
+  weight: /NetWeight|GrossWeight|^Weight$/i,
+  length: /^Length$/i
+};
+var ASSEMBLY_TIERS = [
+  /^assembly\s*position$/i,
+  /assembly.*(mark|position|name)/i,
+  /^mark$/i,
+  /^position$/i,
+  /drawing\s*no/i
+];
 
+/* Gom theo tên cấu kiện Assembly: { count, length, weight } cho mỗi nhóm */
 async function fetchQuantities(api, map){
-  var totalVol=0, totalWeight=0, hit=0, miss=0;
+  var groups=new Map(), hit=0, miss=0;
   for(var entry of map){
     var mid=entry[0], ids=entry[1];
     for(var i=0;i<ids.length;i+=BATCH_PROP){
@@ -282,49 +293,90 @@ async function fetchQuantities(api, map){
       catch(e){ miss+=chunk.length; continue; }
       if(!Array.isArray(props)){ miss+=chunk.length; continue; }
       props.forEach(function(op){
-        var found=false;
+        var weight=null, length=null, found=false;
+        var assemblyTierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
         if(Array.isArray(op.properties)){
           op.properties.forEach(function(ps){
             if(!Array.isArray(ps.properties))return;
             ps.properties.forEach(function(p){
+              for(var t=0;t<ASSEMBLY_TIERS.length;t++){
+                if(assemblyTierVals[t]==null && ASSEMBLY_TIERS[t].test(p.name) && p.value!=null && String(p.value).trim()!==""){
+                  assemblyTierVals[t]=String(p.value).trim();
+                }
+              }
               var v=parseFloat(p.value);
               if(isNaN(v))return;
-              if(QTY_PATTERNS.volume.test(p.name)){totalVol+=v;found=true;}
-              else if(QTY_PATTERNS.weight.test(p.name)){totalWeight+=v;found=true;}
+              if(weight==null && QTY_PATTERNS.weight.test(p.name)){weight=v;found=true;}
+              if(length==null && QTY_PATTERNS.length.test(p.name)){length=v;found=true;}
             });
           });
         }
+        var assembly=assemblyTierVals.find(function(v){return v!=null;})||null;
         if(found)hit++; else miss++;
+        var key=assembly||"Không xác định";
+        var g=groups.get(key);
+        if(!g){g={count:0,length:null,weight:0};groups.set(key,g);}
+        g.count+=1;
+        if(g.length==null && length!=null)g.length=length;
+        if(weight!=null)g.weight+=weight;
       });
     }
   }
-  return {totalVol:totalVol, totalWeight:totalWeight, hit:hit, miss:miss};
+  return {groups:groups, hit:hit, miss:miss};
 }
+
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c];});}
 
 async function showQty(slot, map){
   var btn=document.getElementById("qtyBtn"+slot);
   var resEl=document.getElementById("qtyResult"+slot);
   var noteEl=document.getElementById("noteInput"+slot);
   if(!map||!map.size){log("✗ Slot "+slot+" chưa có dữ liệu để xem khối lượng.","warn");return;}
-  btn.disabled=true;resEl.classList.remove("hidden");resEl.textContent="Đang đọc khối lượng...";
+  btn.disabled=true;resEl.classList.remove("hidden");
+  resEl.innerHTML='<div class="text-[11px] font-mono text-slate-400">Đang đọc khối lượng...</div>';
   try{
     var api=await getAPI();
     var sel=[],total=0;
     map.forEach(function(ids,mid){sel.push({modelId:mid,objectRuntimeIds:ids});total+=ids.length;});
     await api.viewer.setSelection({modelObjectIds:sel}, "set");
     var q=await fetchQuantities(api, map);
-    var lines=[];
-    if(q.totalVol>0) lines.push("Tổng thể tích: "+q.totalVol.toLocaleString(undefined,{maximumFractionDigits:3})+" (đơn vị theo model, thường m³)");
-    if(q.totalWeight>0) lines.push("Tổng khối lượng: "+q.totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})+" (đơn vị theo model, thường kg)");
-    if(!lines.length) lines.push("Model này không có dữ liệu Qto (quantity set) để đọc khối lượng.");
-    lines.push(q.hit+" object có dữ liệu, "+q.miss+" object không có.");
-    resEl.innerHTML=lines.join("<br/>");
+    if(!q.groups.size){
+      resEl.innerHTML='<div class="text-[11px] font-mono text-slate-400">Model này không có dữ liệu Qto/Assembly để đọc.</div>';
+    } else {
+      var rows=Array.from(q.groups.entries()).sort(function(a,b){return a[0].localeCompare(b[0]);});
+      var totalCount=0, totalWeight=0;
+      var html='<table class="w-full text-[10.5px] font-mono border-collapse">'
+        +'<thead><tr class="text-slate-400 border-b border-midnight-border">'
+        +'<th class="text-left py-1 pr-2">Tên cấu kiện</th>'
+        +'<th class="text-right py-1 pr-2">SL</th>'
+        +'<th class="text-right py-1 pr-2">Dài</th>'
+        +'<th class="text-right py-1">Khối lượng (kg)</th>'
+        +'</tr></thead><tbody>';
+      rows.forEach(function(r){
+        var name=r[0], g=r[1];
+        totalCount+=g.count; totalWeight+=g.weight;
+        html+='<tr class="border-b border-midnight-border/50 text-[#e4e8f0]">'
+          +'<td class="py-1 pr-2">'+escapeHtml(name)+'</td>'
+          +'<td class="text-right py-1 pr-2">'+fmtN(g.count)+'</td>'
+          +'<td class="text-right py-1 pr-2">'+(g.length!=null?g.length.toLocaleString(undefined,{maximumFractionDigits:1}):'—')+'</td>'
+          +'<td class="text-right py-1">'+g.weight.toLocaleString(undefined,{maximumFractionDigits:2})+'</td>'
+          +'</tr>';
+      });
+      html+='</tbody><tfoot><tr class="text-sys-green font-bold border-t border-midnight-border">'
+        +'<td class="py-1.5 pr-2">TỔNG</td>'
+        +'<td class="text-right py-1.5 pr-2">'+fmtN(totalCount)+'</td>'
+        +'<td class="text-right py-1.5 pr-2">—</td>'
+        +'<td class="text-right py-1.5">'+totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})+'</td>'
+        +'</tr></tfoot></table>'
+        +'<div class="text-[10px] text-slate-500 mt-1">'+q.hit+' object có dữ liệu, '+q.miss+' object không có.</div>';
+      resEl.innerHTML=html;
+    }
     noteEl.classList.remove("hidden");
     var saved=localStorage.getItem("mcc_note_slot"+slot);
     if(saved!=null)noteEl.value=saved;
     log("✓ Slot "+slot+": đã sáng "+fmtN(total)+" object trên model.","ok");
   }catch(e){
-    resEl.textContent="✗ "+(e&&e.message?e.message:String(e));
+    resEl.innerHTML='<div class="text-[11px] font-mono text-sys-red">✗ '+escapeHtml(e&&e.message?e.message:String(e))+'</div>';
     log("✗ "+(e&&e.message?e.message:String(e)),"err");
   }finally{btn.disabled=false;}
 }

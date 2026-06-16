@@ -1,0 +1,77 @@
+Mở file app.js trong thư mục trimble-colorizer-pro (cùng cấp index.html, manifest.json).
+
+Yêu cầu: hàm fetchQuantities() đang gom nhóm "Tên cấu kiện" bằng cách lấy property đầu tiên khớp pattern rộng (assembly mark/position/name, mark, position, drawing no) — nên nếu model có cả "Drawing No." và "Assembly Position" trên cùng object, có thể nó chọn nhầm "Drawing No." trước. Cần ưu tiên tuyệt đối property tên đúng "Assembly Position" trước, các pattern khác chỉ là fallback khi không có "Assembly Position".
+
+1) Tìm đoạn này (gần dòng 272-276):
+
+var QTY_PATTERNS = {
+  weight: /NetWeight|GrossWeight|^Weight$/i,
+  length: /^Length$/i,
+  assembly: /assembly.*(mark|position|name)|^mark$|^position$|drawing\s*no/i
+};
+
+Thay bằng:
+
+var QTY_PATTERNS = {
+  weight: /NetWeight|GrossWeight|^Weight$/i,
+  length: /^Length$/i
+};
+var ASSEMBLY_TIERS = [
+  /^assembly\s*position$/i,
+  /assembly.*(mark|position|name)/i,
+  /^mark$/i,
+  /^position$/i,
+  /drawing\s*no/i
+];
+
+2) Tìm đoạn này trong fetchQuantities() (gần dòng 289-304):
+
+      props.forEach(function(op){
+        var weight=null, length=null, assembly=null, found=false;
+        if(Array.isArray(op.properties)){
+          op.properties.forEach(function(ps){
+            if(!Array.isArray(ps.properties))return;
+            ps.properties.forEach(function(p){
+              if(assembly==null && QTY_PATTERNS.assembly.test(p.name) && p.value!=null && String(p.value).trim()!==""){
+                assembly=String(p.value).trim();
+              }
+              var v=parseFloat(p.value);
+              if(isNaN(v))return;
+              if(weight==null && QTY_PATTERNS.weight.test(p.name)){weight=v;found=true;}
+              if(length==null && QTY_PATTERNS.length.test(p.name)){length=v;found=true;}
+            });
+          });
+        }
+        if(found)hit++; else miss++;
+
+Thay bằng:
+
+      props.forEach(function(op){
+        var weight=null, length=null, found=false;
+        var assemblyTierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
+        if(Array.isArray(op.properties)){
+          op.properties.forEach(function(ps){
+            if(!Array.isArray(ps.properties))return;
+            ps.properties.forEach(function(p){
+              for(var t=0;t<ASSEMBLY_TIERS.length;t++){
+                if(assemblyTierVals[t]==null && ASSEMBLY_TIERS[t].test(p.name) && p.value!=null && String(p.value).trim()!==""){
+                  assemblyTierVals[t]=String(p.value).trim();
+                }
+              }
+              var v=parseFloat(p.value);
+              if(isNaN(v))return;
+              if(weight==null && QTY_PATTERNS.weight.test(p.name)){weight=v;found=true;}
+              if(length==null && QTY_PATTERNS.length.test(p.name)){length=v;found=true;}
+            });
+          });
+        }
+        var assembly=assemblyTierVals.find(function(v){return v!=null;})||null;
+        if(found)hit++; else miss++;
+
+(Phần code phía dưới dùng biến "assembly" và "key=assembly||..." giữ nguyên không đổi.)
+
+3) Bump cache-bust (bắt buộc mỗi lần đổi app.js):
+- index.html: đổi `<script src="app.js?v=5"></script>` thành `<script src="app.js?v=6"></script>`
+- manifest.json: đổi `"url": "...index.html?v=5"` thành `"url": "...index.html?v=6"`
+
+Không đổi gì khác ngoài 3 chỗ trên. Sau khi sửa xong, tôi tự git add/commit/push.

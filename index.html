@@ -17,7 +17,7 @@
           },
           colors: {
             accent: '#4f8ef7',
-            midnight: { bg:'#0b1326', surface:'#111a32', card:'#16203a', border:'#243150' },
+            midnight: { bg:'#1e2433', surface:'#222838', card:'#262d40', border:'#3a4258' },
             sys: { green:'#22c55e', blue:'#3b82f6', red:'#ef4444' }
           },
           screens: {
@@ -75,7 +75,7 @@
   <div class="hidden text-[10.5px] font-mono text-sys-green mt-1 whitespace-nowrap overflow-hidden text-ellipsis" id="fname1"></div>
   <button id="applyBtn1" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-gradient-to-br from-[#6c63ff] to-accent text-white shadow-[0_2px_10px_rgba(108,99,255,0.3)]">🖌 Tô màu File #1</button>
   <button id="qtyBtn1" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-sys-green border border-sys-green/50">📊 Xem khối lượng</button>
-  <div class="hidden text-[11px] font-mono text-sys-green mt-1.5 leading-relaxed" id="qtyResult1"></div>
+  <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult1"></div>
   <textarea id="noteInput1" placeholder="Ghi chú cho vùng này (tuỳ chọn)..." class="hidden w-full mt-1.5 px-2.5 py-2 bg-midnight-surface border border-midnight-border rounded-lg text-[#e4e8f0] font-sans text-[11px] outline-none transition-colors duration-200 focus:border-accent resize-none" rows="2"></textarea>
 </div>
 
@@ -111,7 +111,7 @@
   <div class="hidden text-[10.5px] font-mono text-sys-green mt-1 whitespace-nowrap overflow-hidden text-ellipsis" id="fname2"></div>
   <button id="applyBtn2" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-gradient-to-br from-[#6c63ff] to-accent text-white shadow-[0_2px_10px_rgba(108,99,255,0.3)]">🖌 Tô màu File #2</button>
   <button id="qtyBtn2" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-sys-green border border-sys-green/50">📊 Xem khối lượng</button>
-  <div class="hidden text-[11px] font-mono text-sys-green mt-1.5 leading-relaxed" id="qtyResult2"></div>
+  <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult2"></div>
   <textarea id="noteInput2" placeholder="Ghi chú cho vùng này (tuỳ chọn)..." class="hidden w-full mt-1.5 px-2.5 py-2 bg-midnight-surface border border-midnight-border rounded-lg text-[#e4e8f0] font-sans text-[11px] outline-none transition-colors duration-200 focus:border-accent resize-none" rows="2"></textarea>
 </div>
 
@@ -145,7 +145,7 @@
   </div>
   <div class="text-[10.5px] font-mono text-slate-400 mt-1" id="selInfo">Chưa chọn gì — click cấu kiện trên viewer rồi bấm "Lấy lựa chọn"</div>
   <button id="qtyBtn3" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-sys-green border border-sys-green/50">📊 Xem khối lượng</button>
-  <div class="hidden text-[11px] font-mono text-sys-green mt-1.5 leading-relaxed" id="qtyResult3"></div>
+  <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult3"></div>
   <textarea id="noteInput3" placeholder="Ghi chú cho vùng này (tuỳ chọn)..." class="hidden w-full mt-1.5 px-2.5 py-2 bg-midnight-surface border border-midnight-border rounded-lg text-[#e4e8f0] font-sans text-[11px] outline-none transition-colors duration-200 focus:border-accent resize-none" rows="2"></textarea>
 </div>
 
@@ -205,6 +205,6 @@
 
 <div class="mt-3 text-[10px] text-slate-500 text-center">Model Control Center v2.0 · Le Van Thao</div>
 
-<script src="app.js?v=3"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
