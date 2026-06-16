@@ -21,6 +21,8 @@ var _color1 = "#00FF00";
 var _color2 = "#0088FF";
 var _color3 = "#FF0000";
 var _selMap = null;
+var _map1 = null;
+var _map2 = null;
 
 /* ═══ UI ═══ */
 /* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
@@ -38,11 +40,11 @@ function log(m,t){console.log("["+(t||"")+"] "+m);var e=document.getElementById(
 function clearLog(){var e=document.getElementById("log");if(e)e.innerHTML="";}
 function setStat(id,v){var e=document.getElementById(id);if(e)e.textContent=(v!=null)?v:"—";}
 function setProgress(p){var w=document.getElementById("progWrap"),b=document.getElementById("progBar");if(!w||!b)return;if(p<=0){w.classList.add("hidden");b.style.width="0%";return;}w.classList.remove("hidden");b.style.width=Math.min(p,100)+"%";}
-function lockUI(y){["applyBtn","resetBtn","saveBtn"].forEach(function(id){var e=document.getElementById(id);if(e)e.disabled=y;});}
+function lockUI(y){["resetBtn","saveBtn"].forEach(function(id){var e=document.getElementById(id);if(e)e.disabled=y;});}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 function pad2(n){return String(n).padStart(2,"0");}
 function fmtN(n){return typeof n==="number"?n.toLocaleString():String(n);}
-function checkApplyBtn(){document.getElementById("applyBtn").disabled=(!_guids1.length&&!_guids2.length);}
+function checkApplyBtn(slot){var g=slot===1?_guids1:_guids2;document.getElementById("applyBtn"+slot).disabled=!g.length;}
 
 /* ═══ KPI status badge (Pending/Ready/Error) ═══ */
 var BADGE_CFG={
@@ -229,82 +231,102 @@ async function paintBatch(api,mid,ids,state){
   }
 }
 
-/* ═══ MAIN ═══ */
-async function applyColors(){
-  lockUI(true);clearLog();setProgress(5);
+/* ═══ MAIN (paint per slot) ═══ */
+async function paintSlot(slot){
+  var guids = slot===1 ? _guids1 : _guids2;
+  var color = slot===1 ? _color1 : _color2;
+  var btn = document.getElementById("applyBtn"+slot);
+  if(!guids.length){log("✗ Chưa có file Excel #"+slot+".","warn");return;}
+  btn.disabled=true;clearLog();setProgress(10);
   try{
-    if(!_guids1.length&&!_guids2.length)throw new Error("Chưa có file nào.");
     var api=await getAPI();
-
-    log("Reset...","info");
-    try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}
-    await sleep(500);
-    setProgress(10);
-
     var mi=await getModelIds();
     setStat("s-total",fmtN(mi.total));
-    setProgress(18);
-
-    log("Map GUIDs...","info");
-    var map1=await convertAll(api,mi.modelIds,_guids1,"File1");
-    var map2=await convertAll(api,mi.modelIds,_guids2,"File2");
-
-    var cnt1=0,cnt2=0;
-    map1.forEach(function(ids){cnt1+=ids.length;});
-    map2.forEach(function(ids){cnt2+=ids.length;});
-    setStat("s-c1",cnt1>0?fmtN(cnt1):"—");
-    setStat("s-c2",cnt2>0?fmtN(cnt2):"—");
-
-    if(cnt1===0&&cnt2===0){log("✗ Không match object nào!","err");setProgress(0);lockUI(false);checkApplyBtn();return;}
-    setProgress(35);
-
-    // ẨN TẤT CẢ
-    log("Ẩn toàn bộ model...","info");
-    try{await api.viewer.setObjectState(undefined,{visible:false});}catch(e){}
-    await sleep(800);
-    setProgress(45);
-
-    // TÔ MÀU FILE 1
-    if(cnt1>0){
-      log("Tô màu File #1 ("+_color1+"): "+fmtN(cnt1)+" objects...","info");
-      for(var i=0;i<mi.modelIds.length;i++){
-        var mid=mi.modelIds[i];var ids=map1.get(mid);
-        if(!ids||!ids.length)continue;
-        await paintBatch(api,mid,ids,{visible:true,color:_color1});
-        log("  ▪ "+fmtN(ids.length)+" objects","ok");
-      }
+    setProgress(30);
+    log("Map GUIDs File #"+slot+"...","info");
+    var map=await convertAll(api,mi.modelIds,guids,"File"+slot);
+    var cnt=0;map.forEach(function(ids){cnt+=ids.length;});
+    setStat("s-c"+slot,cnt>0?fmtN(cnt):"—");
+    if(cnt===0){log("✗ Không match object nào cho File #"+slot+"!","err");setProgress(0);btn.disabled=false;return;}
+    setProgress(60);
+    log("Tô màu File #"+slot+" ("+color+"): "+fmtN(cnt)+" objects...","info");
+    for(var i=0;i<mi.modelIds.length;i++){
+      var mid=mi.modelIds[i];var ids=map.get(mid);
+      if(!ids||!ids.length)continue;
+      await paintBatch(api,mid,ids,{visible:true,color:color});
+      log("  ▪ "+fmtN(ids.length)+" objects","ok");
     }
-    setProgress(62);
-    await sleep(300);
-
-    // TÔ MÀU FILE 2
-    if(cnt2>0){
-      log("Tô màu File #2 ("+_color2+"): "+fmtN(cnt2)+" objects...","info");
-      for(var i=0;i<mi.modelIds.length;i++){
-        var mid=mi.modelIds[i];var ids=map2.get(mid);
-        if(!ids||!ids.length)continue;
-        await paintBatch(api,mid,ids,{visible:true,color:_color2});
-        log("  ▪ "+fmtN(ids.length)+" objects","ok");
-      }
-    }
-    setProgress(80);
-    await sleep(300);
-
-    // HIỆN LẠI PHẦN CÒN LẠI
-    log("Hiện phần còn lại...","info");
-    try{await api.viewer.setObjectState(undefined,{visible:true});}catch(e){}
-    await sleep(500);
+    if(slot===1){_map1=map;}else{_map2=map;}
+    setBadge(slot,"ready");
     setProgress(100);
-
-    log("","info");
-    log("✓ HOÀN TẤT!","ok");
-    if(cnt1)log("  File #1 ("+_color1+"): "+fmtN(cnt1)+" cấu kiện","ok");
-    if(cnt2)log("  File #2 ("+_color2+"): "+fmtN(cnt2)+" cấu kiện","ok");
-    setTimeout(function(){setProgress(0);},2000);
-
+    log("✓ Hoàn tất File #"+slot+".","ok");
+    setTimeout(function(){setProgress(0);},1500);
+    document.getElementById("qtyBtn"+slot).disabled=false;
   }catch(err){
     log("✗ "+(err&&err.message?err.message:String(err)),"err");setProgress(0);
-  }finally{lockUI(false);checkApplyBtn();}
+  }finally{btn.disabled=false;}
+}
+
+/* ═══ Quantities (Qto) ═══ */
+var BATCH_PROP = 200;
+var QTY_PATTERNS = { volume: /NetVolume|GrossVolume|^Volume$/i, weight: /NetWeight|GrossWeight|^Weight$/i };
+
+async function fetchQuantities(api, map){
+  var totalVol=0, totalWeight=0, hit=0, miss=0;
+  for(var entry of map){
+    var mid=entry[0], ids=entry[1];
+    for(var i=0;i<ids.length;i+=BATCH_PROP){
+      var chunk=ids.slice(i,i+BATCH_PROP);
+      var props;
+      try{ props = await api.viewer.getObjectProperties(mid, chunk); }
+      catch(e){ miss+=chunk.length; continue; }
+      if(!Array.isArray(props)){ miss+=chunk.length; continue; }
+      props.forEach(function(op){
+        var found=false;
+        if(Array.isArray(op.properties)){
+          op.properties.forEach(function(ps){
+            if(!Array.isArray(ps.properties))return;
+            ps.properties.forEach(function(p){
+              var v=parseFloat(p.value);
+              if(isNaN(v))return;
+              if(QTY_PATTERNS.volume.test(p.name)){totalVol+=v;found=true;}
+              else if(QTY_PATTERNS.weight.test(p.name)){totalWeight+=v;found=true;}
+            });
+          });
+        }
+        if(found)hit++; else miss++;
+      });
+    }
+  }
+  return {totalVol:totalVol, totalWeight:totalWeight, hit:hit, miss:miss};
+}
+
+async function showQty(slot, map){
+  var btn=document.getElementById("qtyBtn"+slot);
+  var resEl=document.getElementById("qtyResult"+slot);
+  var noteEl=document.getElementById("noteInput"+slot);
+  if(!map||!map.size){log("✗ Slot "+slot+" chưa có dữ liệu để xem khối lượng.","warn");return;}
+  btn.disabled=true;resEl.classList.remove("hidden");resEl.textContent="Đang đọc khối lượng...";
+  try{
+    var api=await getAPI();
+    var sel=[],total=0;
+    map.forEach(function(ids,mid){sel.push({modelId:mid,objectRuntimeIds:ids});total+=ids.length;});
+    await api.viewer.setSelection({modelObjectIds:sel}, "set");
+    var q=await fetchQuantities(api, map);
+    var lines=[];
+    if(q.totalVol>0) lines.push("Tổng thể tích: "+q.totalVol.toLocaleString(undefined,{maximumFractionDigits:3})+" (đơn vị theo model, thường m³)");
+    if(q.totalWeight>0) lines.push("Tổng khối lượng: "+q.totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})+" (đơn vị theo model, thường kg)");
+    if(!lines.length) lines.push("Model này không có dữ liệu Qto (quantity set) để đọc khối lượng.");
+    lines.push(q.hit+" object có dữ liệu, "+q.miss+" object không có.");
+    resEl.innerHTML=lines.join("<br/>");
+    noteEl.classList.remove("hidden");
+    var saved=localStorage.getItem("mcc_note_slot"+slot);
+    if(saved!=null)noteEl.value=saved;
+    log("✓ Slot "+slot+": đã sáng "+fmtN(total)+" object trên model.","ok");
+  }catch(e){
+    resEl.textContent="✗ "+(e&&e.message?e.message:String(e));
+    log("✗ "+(e&&e.message?e.message:String(e)),"err");
+  }finally{btn.disabled=false;}
 }
 
 /* ═══ Reset ═══ */
@@ -312,9 +334,15 @@ async function resetViewer(){
   lockUI(true);clearLog();setProgress(10);
   try{var api=await getAPI();try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}await api.viewer.reset();
   setStat("s-total","—");setStat("s-c1","—");setStat("s-c2","—");
+  _map1=null;_map2=null;_selMap=null;
+  [1,2,3].forEach(function(n){
+    document.getElementById("qtyBtn"+n).disabled=true;
+    document.getElementById("qtyResult"+n).classList.add("hidden");
+    document.getElementById("noteInput"+n).classList.add("hidden");
+  });
   setProgress(100);log("✓ Reset OK.","ok");setTimeout(function(){setProgress(0);},1000);}
   catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");setProgress(0);}
-  finally{lockUI(false);checkApplyBtn();}
+  finally{lockUI(false);checkApplyBtn(1);checkApplyBtn(2);}
 }
 
 /* ═══ Viewer Selection ═══ */
@@ -366,6 +394,7 @@ async function paintSelection(){
       done+=entry[1].length;
     }
     log("✓ Đã tô "+fmtN(done)+" cấu kiện.","ok");
+    document.getElementById("qtyBtn3").disabled=false;
   }catch(e){
     log("✗ "+(e&&e.message?e.message:String(e)),"err");
   }finally{
@@ -393,20 +422,27 @@ async function handleFile(inputEl,fnameId,slot,setGuids){
     var wb=await readWB(f);
     var guids=extractGuids(wb,"File#"+slot);
     setGuids(guids);
-    checkApplyBtn();
+    checkApplyBtn(slot);
     setBadge(slot,"ready");
     log('  ✓ '+guids.length+' GUID',"ok");
   }catch(e){
     log("  ✗ "+(e&&e.message?e.message:String(e)),"err");
-    setGuids([]);checkApplyBtn();
+    setGuids([]);checkApplyBtn(slot);
     setBadge(slot,"error");
   }
 }
 
 document.getElementById("file1").addEventListener("change",function(){handleFile(this,"fname1",1,function(g){_guids1=g;});});
 document.getElementById("file2").addEventListener("change",function(){handleFile(this,"fname2",2,function(g){_guids2=g;});});
-document.getElementById("applyBtn").addEventListener("click",applyColors);
+document.getElementById("applyBtn1").addEventListener("click",function(){paintSlot(1);});
+document.getElementById("applyBtn2").addEventListener("click",function(){paintSlot(2);});
 document.getElementById("resetBtn").addEventListener("click",resetViewer);
 document.getElementById("saveBtn").addEventListener("click",saveView);
 document.getElementById("captureSelBtn").addEventListener("click",captureSelection);
 document.getElementById("paintSelBtn").addEventListener("click",paintSelection);
+document.getElementById("noteInput1").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot1",this.value);});
+document.getElementById("noteInput2").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot2",this.value);});
+document.getElementById("noteInput3").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot3",this.value);});
+document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
+document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
+document.getElementById("qtyBtn3").addEventListener("click",function(){showQty(3,_selMap);});
