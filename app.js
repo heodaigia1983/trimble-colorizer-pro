@@ -48,7 +48,7 @@ function checkApplyBtn(slot){var g=slot===1?_guids1:_guids2;document.getElementB
 
 /* ═══ KPI status badge (Pending/Ready/Error) ═══ */
 var BADGE_CFG={
-  pending:{text:"Pending",cls:"bg-slate-600/30 text-slate-300"},
+  pending:{text:"Pending",cls:"bg-slate-200 text-slate-600"},
   error:{text:"Error",cls:"bg-sys-red/20 text-sys-red"}
 };
 function setBadge(slot,status){
@@ -350,7 +350,7 @@ async function showQty(slot, map){
         +'<th class="text-left py-1 pr-2">Tên cấu kiện</th>'
         +'<th class="text-right py-1 pr-2">SL</th>'
         +'<th class="text-right py-1 pr-2">Dài</th>'
-        +'<th class="text-right py-1">Khối lượng (kg)</th>'
+        +'<th class="text-right py-1">Khối lượng (tấn)</th>'
         +'</tr></thead><tbody>';
       rows.forEach(function(r){
         var name=r[0], g=r[1];
@@ -359,14 +359,14 @@ async function showQty(slot, map){
           +'<td class="py-1 pr-2">'+escapeHtml(name)+'</td>'
           +'<td class="text-right py-1 pr-2">'+fmtN(g.count)+'</td>'
           +'<td class="text-right py-1 pr-2">'+(g.length!=null?g.length.toLocaleString(undefined,{maximumFractionDigits:1}):'—')+'</td>'
-          +'<td class="text-right py-1">'+g.weight.toLocaleString(undefined,{maximumFractionDigits:2})+'</td>'
+          +'<td class="text-right py-1">'+(g.weight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
           +'</tr>';
       });
       html+='</tbody><tfoot><tr class="text-sys-green font-bold border-t border-midnight-border">'
         +'<td class="py-1.5 pr-2">TỔNG</td>'
         +'<td class="text-right py-1.5 pr-2">'+fmtN(totalCount)+'</td>'
         +'<td class="text-right py-1.5 pr-2">—</td>'
-        +'<td class="text-right py-1.5">'+totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})+'</td>'
+        +'<td class="text-right py-1.5">'+(totalWeight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
         +'</tr></tfoot></table>'
         +'<div class="text-[10px] text-slate-500 mt-1">'+q.hit+' object có dữ liệu, '+q.miss+' object không có.</div>';
       resEl.innerHTML=html;

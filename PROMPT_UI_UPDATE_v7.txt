@@ -1,0 +1,97 @@
+Mở các file trong thư mục trimble-colorizer-pro: index.html, app.js, manifest.json.
+
+Yêu cầu: (1) đổi giao diện sang theme sáng (light mode), (2) đổi tên 2 loại nút, (3) đổi đơn vị khối lượng hiển thị từ kg sang Tấn (model vẫn lưu kg, chỉ đổi lúc hiển thị), (4) bump cache-bust v=6 → v=7.
+
+════════════════════════════
+A. INDEX.HTML — Theme sáng
+════════════════════════════
+
+1) Đổi màu nền/card/border (trong tailwind.config):
+
+Tìm:
+            midnight: { bg:'#1e2433', surface:'#222838', card:'#262d40', border:'#3a4258' },
+
+Thay bằng:
+            midnight: { bg:'#eef1f7', surface:'#ffffff', card:'#ffffff', border:'#d7dde8' },
+
+2) Đổi màu chữ chính từ sáng (dùng cho nền tối) sang tối (dùng cho nền sáng) — REPLACE ALL chuỗi sau trong toàn bộ index.html (khoảng 12 chỗ: body, num1/num2/num3, hex1/hex2/hex3, noteInput1/2/3, resetBtn, viewName):
+
+Tìm: text-[#e4e8f0]
+Thay: text-[#1c2333]
+
+3) Viền 3 ô màu lớn (swatch1/2/3) đang dùng viền mờ trắng chỉ hợp nền tối — REPLACE ALL:
+
+Tìm: border-white/15
+Thay: border-black/10
+
+4) Badge "Pending" mặc định (badge-s1, badge-s2) đang dùng chữ xám sáng khó đọc trên nền sáng — REPLACE ALL:
+
+Tìm: bg-slate-600/30 text-slate-300
+Thay: bg-slate-200 text-slate-600
+
+════════════════════════════
+B. ĐỔI TÊN NÚT (chỉ đổi text hiển thị, giữ nguyên id/class/onclick)
+════════════════════════════
+
+5) Nút "Lấy lựa chọn" (Slot 3) → "Chọn":
+
+Tìm: >📍 Lấy lựa chọn</button>
+Thay: >📍 Chọn</button>
+
+6) Nút "Tô màu" → "Đổi màu" (áp dụng cả 3 nút tô màu — Slot 1, Slot 2, Slot 3 — để đồng bộ toàn app):
+
+Tìm: >🖌 Tô màu File #1</button>
+Thay: >🖌 Đổi màu File #1</button>
+
+Tìm: >🖌 Tô màu File #2</button>
+Thay: >🖌 Đổi màu File #2</button>
+
+Tìm: >🖌 Tô màu</button>
+Thay: >🖌 Đổi màu</button>
+
+════════════════════════════
+C. APP.JS — Khối lượng hiển thị Tấn (model vẫn lưu kg, chỉ đổi lúc in ra)
+════════════════════════════
+
+7) Trong hàm showQty(), đoạn thead:
+
+Tìm:
+        +'<th class="text-right py-1">Khối lượng (kg)</th>'
+
+Thay bằng:
+        +'<th class="text-right py-1">Khối lượng (tấn)</th>'
+
+8) Dòng render giá trị khối lượng từng nhóm:
+
+Tìm:
+          +'<td class="text-right py-1">'+g.weight.toLocaleString(undefined,{maximumFractionDigits:2})+'</td>'
+
+Thay bằng:
+          +'<td class="text-right py-1">'+(g.weight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
+
+9) Dòng TỔNG:
+
+Tìm:
+        +'<td class="text-right py-1.5">'+totalWeight.toLocaleString(undefined,{maximumFractionDigits:2})+'</td>'
+
+Thay bằng:
+        +'<td class="text-right py-1.5">'+(totalWeight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
+
+(Biến g.weight và totalWeight bên trong code vẫn giữ đơn vị kg như cũ — không đổi logic fetchQuantities/cộng dồn, chỉ chia 1000 lúc in ra màn hình.)
+
+10) Badge "Pending" mặc định trong BADGE_CFG — đồng bộ với bước 4:
+
+Tìm:
+  pending:{text:"Pending",cls:"bg-slate-600/30 text-slate-300"},
+
+Thay bằng:
+  pending:{text:"Pending",cls:"bg-slate-200 text-slate-600"},
+
+════════════════════════════
+D. CACHE-BUST (bắt buộc)
+════════════════════════════
+
+11) index.html: đổi `<script src="app.js?v=6"></script>` thành `<script src="app.js?v=7"></script>`
+12) manifest.json: đổi `"url": "...index.html?v=6"` thành `"url": "...index.html?v=7"`
+
+Không đổi gì khác ngoài các chỗ trên. Sau khi sửa xong, tôi tự git add/commit/push.
