@@ -1,9 +1,10 @@
 /**
- * IFC Color Studio v1.0
+ * Model Control Center v2.0
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
- * Logic dựa trên v7/v9 đã chứng minh hoạt động
+ * Logic dựa trên v7/v9 đã chứng minh hoạt động (không đổi)
+ * UI: Tailwind CSS, theme Technical Midnight, KPI badges, mobile-first
  * Developed by Le Van Thao
  */
 
@@ -22,15 +23,41 @@ var _color3 = "#FF0000";
 var _selMap = null;
 
 /* ═══ UI ═══ */
-function log(m,t){var e=document.getElementById("log");if(!e){console.log(m);return;}var s=document.createElement("span");if(t)s.className=t;s.textContent=m+"\n";e.appendChild(s);e.scrollTop=e.scrollHeight;console.log("["+(t||"")+"] "+m);}
+/* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
+var ERROR_HINTS=[
+  {pattern:/dispatcher/i,hint:"(Lỗi kết nối với viewer, thử lại sau vài giây)"},
+  {pattern:/timeout/i,hint:"(Lỗi kết nối với viewer, thử lại sau vài giây)"},
+  {pattern:/viewer trống|đợi model load/i,hint:"(Model 3D chưa load xong, đợi vài giây rồi thử lại)"},
+  {pattern:/không thấy modelid/i,hint:"(Không tìm thấy model nào đang mở trong viewer)"},
+  {pattern:/không có sheet|sheet trống/i,hint:"(File Excel không có dữ liệu, kiểm tra lại file)"},
+  {pattern:/no view id/i,hint:"(Không tạo được view, thử lại sau)"}
+];
+function friendlyHint(msg){if(!msg)return null;for(var i=0;i<ERROR_HINTS.length;i++){if(ERROR_HINTS[i].pattern.test(msg))return ERROR_HINTS[i].hint;}return null;}
+var LOG_CLR={ok:"text-sys-green",info:"text-accent",warn:"text-amber-400",err:"text-sys-red"};
+function log(m,t){console.log("["+(t||"")+"] "+m);var e=document.getElementById("log");if(!e)return;var s=document.createElement("span");s.className=LOG_CLR[t]||"";var hint=friendlyHint(m);s.textContent=m+(hint?"\n"+hint:"")+"\n";e.appendChild(s);e.scrollTop=e.scrollHeight;}
 function clearLog(){var e=document.getElementById("log");if(e)e.innerHTML="";}
 function setStat(id,v){var e=document.getElementById(id);if(e)e.textContent=(v!=null)?v:"—";}
-function setProgress(p){var w=document.getElementById("progWrap"),b=document.getElementById("progBar");if(!w||!b)return;if(p<=0){w.classList.remove("on");b.style.width="0%";return;}w.classList.add("on");b.style.width=Math.min(p,100)+"%";}
+function setProgress(p){var w=document.getElementById("progWrap"),b=document.getElementById("progBar");if(!w||!b)return;if(p<=0){w.classList.add("hidden");b.style.width="0%";return;}w.classList.remove("hidden");b.style.width=Math.min(p,100)+"%";}
 function lockUI(y){["applyBtn","resetBtn","saveBtn"].forEach(function(id){var e=document.getElementById(id);if(e)e.disabled=y;});}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 function pad2(n){return String(n).padStart(2,"0");}
 function fmtN(n){return typeof n==="number"?n.toLocaleString():String(n);}
 function checkApplyBtn(){document.getElementById("applyBtn").disabled=(!_guids1.length&&!_guids2.length);}
+
+/* ═══ KPI status badge (Pending/Ready/Error) ═══ */
+var BADGE_CFG={
+  pending:{text:"Pending",cls:"bg-slate-600/30 text-slate-300"},
+  error:{text:"Error",cls:"bg-sys-red/20 text-sys-red"}
+};
+function setBadge(slot,status){
+  var el=document.getElementById("badge-s"+slot);
+  if(!el)return;
+  var cfg;
+  if(status==="ready"){var c=slot===1?"green":"blue";cfg={text:"Ready",cls:"bg-sys-"+c+"/20 text-sys-"+c};}
+  else cfg=BADGE_CFG[status]||BADGE_CFG.pending;
+  el.textContent=cfg.text;
+  el.className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full "+cfg.cls;
+}
 
 /* ═══ COLOR PICKER ═══ */
 function isValidHex(h){return/^#[0-9a-fA-F]{6}$/.test(h);}
@@ -100,6 +127,10 @@ window.addEventListener("load",function(){
   setColor(2,_color2);
   setColor(3,_color3);
 
+  // Init KPI badges
+  setBadge(1,"pending");
+  setBadge(2,"pending");
+
   // Drag & drop
   setupDrop("zone1","file1");
   setupDrop("zone2","file2");
@@ -107,10 +138,11 @@ window.addEventListener("load",function(){
 
 function setupDrop(zoneId, fileId){
   var z=document.getElementById(zoneId);
-  z.addEventListener("dragover",function(e){e.preventDefault();z.classList.add("over");});
-  z.addEventListener("dragleave",function(){z.classList.remove("over");});
+  var overCls=["border-accent","bg-accent/5"];
+  z.addEventListener("dragover",function(e){e.preventDefault();z.classList.add.apply(z.classList,overCls);});
+  z.addEventListener("dragleave",function(){z.classList.remove.apply(z.classList,overCls);});
   z.addEventListener("drop",function(e){
-    e.preventDefault();z.classList.remove("over");
+    e.preventDefault();z.classList.remove.apply(z.classList,overCls);
     var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
     if(f){document.getElementById(fileId).files=e.dataTransfer.files;document.getElementById(fileId).dispatchEvent(new Event("change"));}
   });
@@ -345,7 +377,7 @@ async function paintSelection(){
 async function saveView(){
   try{var api=await getAPI();var inp=document.getElementById("viewName");var name=inp?inp.value.trim():"";
   if(!name){var n=new Date();name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());if(inp)inp.value=name;}
-  var c=await api.view.createView({name:name,description:"IFC Color Studio v1.0 | Le Van Thao"});
+  var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});
   if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);
   log('✓ View: "'+name+'"',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
@@ -354,17 +386,20 @@ async function saveView(){
 async function handleFile(inputEl,fnameId,slot,setGuids){
   var f=inputEl.files&&inputEl.files[0];if(!f)return;
   var fnEl=document.getElementById(fnameId);
-  fnEl.textContent=f.name;fnEl.classList.add("show");
+  fnEl.textContent=f.name;fnEl.classList.remove("hidden");
+  setBadge(slot,"pending");
   log('Đọc [File#'+slot+'] "'+f.name+'"...',"info");
   try{
     var wb=await readWB(f);
     var guids=extractGuids(wb,"File#"+slot);
     setGuids(guids);
     checkApplyBtn();
+    setBadge(slot,"ready");
     log('  ✓ '+guids.length+' GUID',"ok");
   }catch(e){
     log("  ✗ "+(e&&e.message?e.message:String(e)),"err");
     setGuids([]);checkApplyBtn();
+    setBadge(slot,"error");
   }
 }
 
