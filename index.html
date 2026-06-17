@@ -16,9 +16,9 @@
             mono: ['JetBrains Mono','monospace']
           },
           colors: {
-            accent: '#4f8ef7',
-            midnight: { bg:'#eef1f7', surface:'#ffffff', card:'#ffffff', border:'#d7dde8' },
-            sys: { green:'#22c55e', blue:'#3b82f6', red:'#ef4444' }
+            accent: '#22d3ee',
+            midnight: { bg:'#0a0e14', surface:'#000814', card:'#1a1f2b', border:'#1e2538' },
+            sys: { green:'#00ff9d', blue:'#3b82f6', red:'#ff4757', amber:'#ffb020' }
           },
           screens: {
             mobile: { max: '479px' },
@@ -30,33 +30,125 @@
   </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    @keyframes neon-pulse {
+      0%,100% { box-shadow:0 0 4px currentColor,0 0 8px currentColor; }
+      50%      { box-shadow:0 0 12px currentColor,0 0 24px currentColor,0 0 36px currentColor; }
+    }
+    .neon-dot { animation:neon-pulse 2s ease-in-out infinite; }
+
+    .glass-slot:hover {
+      box-shadow:0 0 0 1px rgba(34,211,238,0.25),0 4px 28px rgba(34,211,238,0.08);
+    }
+
+    /* Terminal log */
+    #log {
+      background:#000814;
+      border:1px solid rgba(0,255,157,0.15);
+      border-radius:9px;
+      padding:10px 11px;
+      max-height:130px;
+      overflow-y:auto;
+      font-family:'JetBrains Mono',monospace;
+      font-size:10.5px;
+      line-height:1.65;
+      color:rgba(0,255,157,0.75);
+      white-space:pre-wrap;
+      word-break:break-all;
+      position:relative;
+    }
+    #log::after {
+      content:'';
+      position:absolute;
+      inset:0;
+      background:repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0,0,0,0.06) 3px,
+        rgba(0,0,0,0.06) 4px
+      );
+      pointer-events:none;
+      border-radius:9px;
+    }
+    #log .ok   { color:#00ff9d; }
+    #log .info { color:#22d3ee; }
+    #log .warn { color:#ffb020; }
+    #log .err  { color:#ff4757; }
+    #log::-webkit-scrollbar { width:3px; }
+    #log::-webkit-scrollbar-thumb { background:rgba(34,211,238,0.3);border-radius:2px; }
+
+    /* Table high-tech */
+    table { width:100%;border-collapse:collapse; }
+    th {
+      background:rgba(0,0,0,0.55);
+      color:#8b95a7;
+      font-size:10px;
+      font-weight:600;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      padding:6px 8px;
+      border:1px solid rgba(255,255,255,0.07);
+    }
+    td {
+      padding:5px 8px;
+      border:1px solid rgba(255,255,255,0.04);
+      font-size:10.5px;
+      color:#e8eaed;
+    }
+    tr:hover td { background:rgba(34,211,238,0.05); }
+
+    /* Input focus ring */
+    input[type="text"]:focus,
+    input[type="text"].hex-input:focus {
+      outline:none;
+      border-color:rgba(34,211,238,0.55) !important;
+      box-shadow:0 0 0 2px rgba(34,211,238,0.12) !important;
+    }
+    textarea:focus {
+      outline:none;
+      border-color:rgba(34,211,238,0.55) !important;
+      box-shadow:0 0 0 2px rgba(34,211,238,0.12) !important;
+    }
+    ::placeholder { color:#4a5568; }
   </style>
 </head>
-<body class="bg-midnight-bg text-[#1c2333] font-sans text-[12.5px] p-[13px] min-h-screen">
+<body class="text-[#e8eaed] font-sans text-[12.5px] p-[13px] min-h-screen"
+      style="background:linear-gradient(135deg,#0a0e14 0%,#12161f 100%)">
 
-<div class="flex items-center gap-2.5 mb-[15px] pb-3 border-b border-midnight-border">
-  <div class="w-9 h-9 rounded-[10px] flex-shrink-0 bg-gradient-to-br from-[#6c63ff] to-accent flex items-center justify-center text-lg shadow-[0_2px_10px_rgba(79,142,247,0.3)]">🎨</div>
+<!-- TOP BAR -->
+<div class="flex items-center gap-2.5 mb-[15px] pb-3" style="border-bottom:1px solid rgba(255,255,255,0.08)">
+  <div class="w-9 h-9 rounded-[10px] flex-shrink-0 flex items-center justify-center text-lg"
+       style="background:linear-gradient(135deg,#22d3ee,#3b82f6);box-shadow:0 2px 14px rgba(34,211,238,0.4)">🎨</div>
   <div>
     <div class="text-[14px] font-bold tracking-[-0.3px]">Model Control Center</div>
-    <div class="text-[10px] text-slate-500 mt-0.5">Developed by Le Van Thao</div>
-    <div class="text-[10px] text-slate-500 mt-0.5"><b class="text-accent">05.666668.47</b> - Lê Văn Thảo</div>
+    <div class="text-[10px] mt-0.5" style="color:#8b95a7">Developed by Le Van Thao</div>
+    <div class="text-[10px] mt-0.5" style="color:#8b95a7"><b class="text-accent">05.666668.47</b> - Lê Văn Thảo</div>
   </div>
 </div>
 
 <!-- SLOT 1 -->
-<div class="bg-midnight-card border border-midnight-border rounded-xl p-3 mb-2.5 transition-colors duration-200 hover:border-accent" id="slot1">
+<div class="glass-slot backdrop-blur-[12px] rounded-xl p-3 mb-2.5 transition-all duration-200"
+     style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-left:2px solid rgba(34,211,238,0.5)"
+     id="slot1">
   <div class="flex items-center gap-2 mb-2">
-    <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0 bg-midnight-border text-[#1c2333]" id="num1">1</div>
+    <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+         style="background:rgba(34,211,238,0.18);color:#22d3ee" id="num1">1</div>
     <div class="text-[11.5px] font-semibold flex-1">File Excel #1</div>
   </div>
 
   <div class="flex items-center gap-2 mb-2 flex-wrap">
-    <div class="text-[10.5px] text-slate-500 whitespace-nowrap">Màu:</div>
+    <div class="text-[10.5px] whitespace-nowrap" style="color:#8b95a7">Màu:</div>
     <div class="relative flex items-center gap-1.5">
-      <div class="w-7 h-7 rounded-[7px] border-2 border-black/10 cursor-pointer flex-shrink-0 transition-transform duration-150 shadow-[0_2px_8px_rgba(0,0,0,0.3)] hover:scale-110 mobile:w-11 mobile:h-11" id="swatch1" style="background:#00FF00"></div>
-      <input type="color" id="picker1" value="#00FF00" title="Chọn màu File #1" class="absolute opacity-0 w-7 h-7 mobile:w-11 mobile:h-11 cursor-pointer border-none p-0 appearance-none"/>
+      <div class="w-7 h-7 rounded-[7px] cursor-pointer flex-shrink-0 transition-transform duration-150 hover:scale-110 mobile:w-11 mobile:h-11"
+           style="background:#00FF00;border:2px solid rgba(255,255,255,0.2);box-shadow:0 2px 8px rgba(0,0,0,0.5)"
+           id="swatch1"></div>
+      <input type="color" id="picker1" value="#00FF00" title="Chọn màu File #1"
+             class="absolute opacity-0 w-7 h-7 mobile:w-11 mobile:h-11 cursor-pointer border-none p-0 appearance-none"/>
     </div>
-    <input type="text" id="hex1" value="#00FF00" maxlength="7" class="font-mono text-[11px] text-[#1c2333] bg-midnight-surface border border-midnight-border rounded-md px-2 py-1 w-20 outline-none transition-colors duration-200 focus:border-accent"/>
+    <input type="text" id="hex1" value="#00FF00" maxlength="7"
+           class="hex-input font-mono text-[11px] rounded-md px-2 py-1 w-20 transition-all duration-200"
+           style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#e8eaed"/>
     <div class="flex gap-1.5 ml-1">
       <div class="w-[18px] h-[18px] rounded-[5px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-white/40 mobile:w-11 mobile:h-11" style="background:#00FF00" title="Xanh lá" onclick="setColor(1,'#00FF00')"></div>
       <div class="w-[18px] h-[18px] rounded-[5px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-white/40 mobile:w-11 mobile:h-11" style="background:#0088FF" title="Xanh dương" onclick="setColor(1,'#0088FF')"></div>
@@ -67,32 +159,51 @@
     </div>
   </div>
 
-  <div class="relative border-[1.5px] border-dashed border-midnight-border rounded-lg px-[11px] py-[9px] cursor-pointer transition-colors duration-200 flex items-center gap-2 hover:border-accent hover:bg-accent/5" id="zone1">
-    <input type="file" id="file1" accept=".xls,.xlsx" title="Chọn file Excel #1" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
+  <div class="relative rounded-lg px-[11px] py-[9px] cursor-pointer transition-all duration-200 flex items-center gap-2 hover:bg-accent/[0.04]"
+       style="border:1.5px dashed rgba(255,255,255,0.12)" id="zone1"
+       onmouseenter="this.style.borderColor='rgba(34,211,238,0.45)'"
+       onmouseleave="this.style.borderColor='rgba(255,255,255,0.12)'">
+    <input type="file" id="file1" accept=".xls,.xlsx" title="Chọn file Excel #1"
+           class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
     <div class="text-base flex-shrink-0">📂</div>
-    <div class="text-[11.5px] text-slate-500">Chọn hoặc kéo thả <b class="text-accent">file Excel</b></div>
+    <div class="text-[11.5px]" style="color:#8b95a7">Chọn hoặc kéo thả <b class="text-accent">file Excel</b></div>
   </div>
-  <div class="hidden text-[10.5px] font-mono text-sys-green mt-1 whitespace-nowrap overflow-hidden text-ellipsis" id="fname1"></div>
-  <button id="applyBtn1" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-gradient-to-br from-[#6c63ff] to-accent text-white shadow-[0_2px_10px_rgba(108,99,255,0.3)]">🖌 Đổi màu File #1</button>
-  <button id="qtyBtn1" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-sys-green border border-sys-green/50">📊 Xem khối lượng</button>
+  <div class="hidden text-[10.5px] font-mono mt-1 whitespace-nowrap overflow-hidden text-ellipsis"
+       style="color:#00ff9d" id="fname1"></div>
+  <button id="applyBtn1" type="button" disabled
+          class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] text-white"
+          style="background:linear-gradient(135deg,#22d3ee,#3b82f6);box-shadow:0 2px 14px rgba(34,211,238,0.28)">🖌 Đổi màu File #1</button>
+  <button id="qtyBtn1" type="button" disabled
+          class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
+          style="background:rgba(0,255,157,0.07);border:1px solid rgba(0,255,157,0.3);color:#00ff9d">📊 Xem khối lượng</button>
   <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult1"></div>
-  <textarea id="noteInput1" placeholder="Ghi chú cho vùng này (tuỳ chọn)..." class="hidden w-full mt-1.5 px-2.5 py-2 bg-midnight-surface border border-midnight-border rounded-lg text-[#1c2333] font-sans text-[11px] outline-none transition-colors duration-200 focus:border-accent resize-none" rows="2"></textarea>
+  <textarea id="noteInput1" placeholder="Ghi chú cho vùng này (tuỳ chọn)..."
+            class="hidden w-full mt-1.5 px-2.5 py-2 font-sans text-[11px] transition-all duration-200 resize-none rounded-lg"
+            style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);color:#e8eaed" rows="2"></textarea>
 </div>
 
 <!-- SLOT 2 -->
-<div class="bg-midnight-card border border-midnight-border rounded-xl p-3 mb-2.5 transition-colors duration-200 hover:border-accent" id="slot2">
+<div class="glass-slot backdrop-blur-[12px] rounded-xl p-3 mb-2.5 transition-all duration-200"
+     style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-left:2px solid rgba(59,130,246,0.5)"
+     id="slot2">
   <div class="flex items-center gap-2 mb-2">
-    <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0 bg-midnight-border text-[#1c2333]" id="num2">2</div>
+    <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+         style="background:rgba(59,130,246,0.18);color:#3b82f6" id="num2">2</div>
     <div class="text-[11.5px] font-semibold flex-1">File Excel #2</div>
   </div>
 
   <div class="flex items-center gap-2 mb-2 flex-wrap">
-    <div class="text-[10.5px] text-slate-500 whitespace-nowrap">Màu:</div>
+    <div class="text-[10.5px] whitespace-nowrap" style="color:#8b95a7">Màu:</div>
     <div class="relative flex items-center gap-1.5">
-      <div class="w-7 h-7 rounded-[7px] border-2 border-black/10 cursor-pointer flex-shrink-0 transition-transform duration-150 shadow-[0_2px_8px_rgba(0,0,0,0.3)] hover:scale-110 mobile:w-11 mobile:h-11" id="swatch2" style="background:#0088FF"></div>
-      <input type="color" id="picker2" value="#0088FF" title="Chọn màu File #2" class="absolute opacity-0 w-7 h-7 mobile:w-11 mobile:h-11 cursor-pointer border-none p-0 appearance-none"/>
+      <div class="w-7 h-7 rounded-[7px] cursor-pointer flex-shrink-0 transition-transform duration-150 hover:scale-110 mobile:w-11 mobile:h-11"
+           style="background:#0088FF;border:2px solid rgba(255,255,255,0.2);box-shadow:0 2px 8px rgba(0,0,0,0.5)"
+           id="swatch2"></div>
+      <input type="color" id="picker2" value="#0088FF" title="Chọn màu File #2"
+             class="absolute opacity-0 w-7 h-7 mobile:w-11 mobile:h-11 cursor-pointer border-none p-0 appearance-none"/>
     </div>
-    <input type="text" id="hex2" value="#0088FF" maxlength="7" class="font-mono text-[11px] text-[#1c2333] bg-midnight-surface border border-midnight-border rounded-md px-2 py-1 w-20 outline-none transition-colors duration-200 focus:border-accent"/>
+    <input type="text" id="hex2" value="#0088FF" maxlength="7"
+           class="hex-input font-mono text-[11px] rounded-md px-2 py-1 w-20 transition-all duration-200"
+           style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#e8eaed"/>
     <div class="flex gap-1.5 ml-1">
       <div class="w-[18px] h-[18px] rounded-[5px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-white/40 mobile:w-11 mobile:h-11" style="background:#00FF00" title="Xanh lá" onclick="setColor(2,'#00FF00')"></div>
       <div class="w-[18px] h-[18px] rounded-[5px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-white/40 mobile:w-11 mobile:h-11" style="background:#0088FF" title="Xanh dương" onclick="setColor(2,'#0088FF')"></div>
@@ -103,32 +214,51 @@
     </div>
   </div>
 
-  <div class="relative border-[1.5px] border-dashed border-midnight-border rounded-lg px-[11px] py-[9px] cursor-pointer transition-colors duration-200 flex items-center gap-2 hover:border-accent hover:bg-accent/5" id="zone2">
-    <input type="file" id="file2" accept=".xls,.xlsx" title="Chọn file Excel #2" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
+  <div class="relative rounded-lg px-[11px] py-[9px] cursor-pointer transition-all duration-200 flex items-center gap-2 hover:bg-accent/[0.04]"
+       style="border:1.5px dashed rgba(255,255,255,0.12)" id="zone2"
+       onmouseenter="this.style.borderColor='rgba(34,211,238,0.45)'"
+       onmouseleave="this.style.borderColor='rgba(255,255,255,0.12)'">
+    <input type="file" id="file2" accept=".xls,.xlsx" title="Chọn file Excel #2"
+           class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
     <div class="text-base flex-shrink-0">📂</div>
-    <div class="text-[11.5px] text-slate-500">Chọn hoặc kéo thả <b class="text-accent">file Excel</b></div>
+    <div class="text-[11.5px]" style="color:#8b95a7">Chọn hoặc kéo thả <b class="text-accent">file Excel</b></div>
   </div>
-  <div class="hidden text-[10.5px] font-mono text-sys-green mt-1 whitespace-nowrap overflow-hidden text-ellipsis" id="fname2"></div>
-  <button id="applyBtn2" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-gradient-to-br from-[#6c63ff] to-accent text-white shadow-[0_2px_10px_rgba(108,99,255,0.3)]">🖌 Đổi màu File #2</button>
-  <button id="qtyBtn2" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-sys-green border border-sys-green/50">📊 Xem khối lượng</button>
+  <div class="hidden text-[10.5px] font-mono mt-1 whitespace-nowrap overflow-hidden text-ellipsis"
+       style="color:#00ff9d" id="fname2"></div>
+  <button id="applyBtn2" type="button" disabled
+          class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] text-white"
+          style="background:linear-gradient(135deg,#22d3ee,#3b82f6);box-shadow:0 2px 14px rgba(34,211,238,0.28)">🖌 Đổi màu File #2</button>
+  <button id="qtyBtn2" type="button" disabled
+          class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
+          style="background:rgba(0,255,157,0.07);border:1px solid rgba(0,255,157,0.3);color:#00ff9d">📊 Xem khối lượng</button>
   <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult2"></div>
-  <textarea id="noteInput2" placeholder="Ghi chú cho vùng này (tuỳ chọn)..." class="hidden w-full mt-1.5 px-2.5 py-2 bg-midnight-surface border border-midnight-border rounded-lg text-[#1c2333] font-sans text-[11px] outline-none transition-colors duration-200 focus:border-accent resize-none" rows="2"></textarea>
+  <textarea id="noteInput2" placeholder="Ghi chú cho vùng này (tuỳ chọn)..."
+            class="hidden w-full mt-1.5 px-2.5 py-2 font-sans text-[11px] transition-all duration-200 resize-none rounded-lg"
+            style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);color:#e8eaed" rows="2"></textarea>
 </div>
 
 <!-- SLOT 3: VIEWER SELECTION -->
-<div class="bg-midnight-card border border-midnight-border rounded-xl p-3 mb-2.5 transition-colors duration-200 hover:border-accent" id="slot3">
+<div class="glass-slot backdrop-blur-[12px] rounded-xl p-3 mb-2.5 transition-all duration-200"
+     style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-left:2px solid rgba(255,71,87,0.5)"
+     id="slot3">
   <div class="flex items-center gap-2 mb-2">
-    <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0 bg-midnight-border text-[#1c2333]" id="num3">3</div>
+    <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+         style="background:rgba(255,71,87,0.18);color:#ff4757" id="num3">3</div>
     <div class="text-[11.5px] font-semibold flex-1">Chọn trực tiếp trên Viewer</div>
   </div>
 
   <div class="flex items-center gap-2 mb-2 flex-wrap">
-    <div class="text-[10.5px] text-slate-500 whitespace-nowrap">Màu:</div>
+    <div class="text-[10.5px] whitespace-nowrap" style="color:#8b95a7">Màu:</div>
     <div class="relative flex items-center gap-1.5">
-      <div class="w-7 h-7 rounded-[7px] border-2 border-black/10 cursor-pointer flex-shrink-0 transition-transform duration-150 shadow-[0_2px_8px_rgba(0,0,0,0.3)] hover:scale-110 mobile:w-11 mobile:h-11" id="swatch3" style="background:#FF0000"></div>
-      <input type="color" id="picker3" value="#FF0000" title="Chọn màu lựa chọn viewer" class="absolute opacity-0 w-7 h-7 mobile:w-11 mobile:h-11 cursor-pointer border-none p-0 appearance-none"/>
+      <div class="w-7 h-7 rounded-[7px] cursor-pointer flex-shrink-0 transition-transform duration-150 hover:scale-110 mobile:w-11 mobile:h-11"
+           style="background:#FF0000;border:2px solid rgba(255,255,255,0.2);box-shadow:0 2px 8px rgba(0,0,0,0.5)"
+           id="swatch3"></div>
+      <input type="color" id="picker3" value="#FF0000" title="Chọn màu lựa chọn viewer"
+             class="absolute opacity-0 w-7 h-7 mobile:w-11 mobile:h-11 cursor-pointer border-none p-0 appearance-none"/>
     </div>
-    <input type="text" id="hex3" value="#FF0000" maxlength="7" class="font-mono text-[11px] text-[#1c2333] bg-midnight-surface border border-midnight-border rounded-md px-2 py-1 w-20 outline-none transition-colors duration-200 focus:border-accent"/>
+    <input type="text" id="hex3" value="#FF0000" maxlength="7"
+           class="hex-input font-mono text-[11px] rounded-md px-2 py-1 w-20 transition-all duration-200"
+           style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#e8eaed"/>
     <div class="flex gap-1.5 ml-1">
       <div class="w-[18px] h-[18px] rounded-[5px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-white/40 mobile:w-11 mobile:h-11" style="background:#00FF00" title="Xanh lá" onclick="setColor(3,'#00FF00')"></div>
       <div class="w-[18px] h-[18px] rounded-[5px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-white/40 mobile:w-11 mobile:h-11" style="background:#0088FF" title="Xanh dương" onclick="setColor(3,'#0088FF')"></div>
@@ -140,70 +270,92 @@
   </div>
 
   <div class="flex gap-1.5 mb-2.5">
-    <button id="captureSelBtn" type="button" class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-[#1c2333] border border-midnight-border">📍 Chọn</button>
-    <button id="paintSelBtn" type="button" disabled class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-accent border border-accent">🖌 Đổi màu</button>
+    <button id="captureSelBtn" type="button"
+            class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
+            style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#e8eaed">📍 Chọn</button>
+    <button id="paintSelBtn" type="button" disabled
+            class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] text-accent"
+            style="background:rgba(34,211,238,0.07);border:1px solid rgba(34,211,238,0.35)">🖌 Đổi màu</button>
   </div>
-  <div class="text-[10.5px] font-mono text-slate-400 mt-1" id="selInfo">Chưa chọn gì — click cấu kiện trên viewer rồi bấm "Lấy lựa chọn"</div>
-  <button id="qtyBtn3" type="button" disabled class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-sys-green border border-sys-green/50">📊 Xem khối lượng</button>
+  <div class="text-[10.5px] font-mono mt-1" style="color:#8b95a7" id="selInfo">Chưa chọn gì — click cấu kiện trên viewer rồi bấm "Lấy lựa chọn"</div>
+  <button id="qtyBtn3" type="button" disabled
+          class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
+          style="background:rgba(0,255,157,0.07);border:1px solid rgba(0,255,157,0.3);color:#00ff9d">📊 Xem khối lượng</button>
   <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult3"></div>
-  <textarea id="noteInput3" placeholder="Ghi chú cho vùng này (tuỳ chọn)..." class="hidden w-full mt-1.5 px-2.5 py-2 bg-midnight-surface border border-midnight-border rounded-lg text-[#1c2333] font-sans text-[11px] outline-none transition-colors duration-200 focus:border-accent resize-none" rows="2"></textarea>
+  <textarea id="noteInput3" placeholder="Ghi chú cho vùng này (tuỳ chọn)..."
+            class="hidden w-full mt-1.5 px-2.5 py-2 font-sans text-[11px] transition-all duration-200 resize-none rounded-lg"
+            style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);color:#e8eaed" rows="2"></textarea>
 </div>
 
-<div class="h-px bg-midnight-border my-3"></div>
+<div class="h-px my-3" style="background:rgba(255,255,255,0.08)"></div>
 
 <!-- Stats -->
 <div class="grid grid-cols-1 tablet:grid-cols-3 gap-1.5 mb-3">
-  <div class="bg-midnight-card border border-midnight-border rounded-lg px-2.5 py-2">
+  <div class="backdrop-blur-[12px] rounded-lg px-2.5 py-2"
+       style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
     <div class="flex items-center justify-between mb-1">
-      <span class="text-[9.5px] text-slate-500">Tổng cấu kiện</span>
+      <span class="text-[9.5px]" style="color:#8b95a7">Tổng cấu kiện</span>
       <span class="text-sm">📦</span>
     </div>
     <div class="text-[17px] font-bold font-mono leading-none" id="s-total">—</div>
   </div>
-  <div class="bg-midnight-card border border-midnight-border rounded-lg px-2.5 py-2">
+  <div class="backdrop-blur-[12px] rounded-lg px-2.5 py-2"
+       style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
     <div class="flex items-center justify-between mb-1">
       <div class="flex items-center gap-1.5">
-        <span class="w-2 h-2 rounded-full bg-sys-green flex-shrink-0"></span>
-        <span class="text-[9.5px] text-slate-500" id="label-s1">File #1</span>
+        <span class="neon-dot w-2 h-2 rounded-full flex-shrink-0 inline-block"
+              style="background:#00ff9d;color:#00ff9d"></span>
+        <span class="text-[9.5px]" style="color:#8b95a7" id="label-s1">File #1</span>
       </div>
-      <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600" id="badge-s1">Pending</span>
+      <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+            style="background:rgba(255,255,255,0.09);color:#8b95a7" id="badge-s1">Pending</span>
     </div>
     <div class="text-[17px] font-bold font-mono leading-none" id="s-c1" style="color:#00FF00">—</div>
   </div>
-  <div class="bg-midnight-card border border-midnight-border rounded-lg px-2.5 py-2">
+  <div class="backdrop-blur-[12px] rounded-lg px-2.5 py-2"
+       style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
     <div class="flex items-center justify-between mb-1">
       <div class="flex items-center gap-1.5">
-        <span class="w-2 h-2 rounded-full bg-sys-blue flex-shrink-0"></span>
-        <span class="text-[9.5px] text-slate-500" id="label-s2">File #2</span>
+        <span class="neon-dot w-2 h-2 rounded-full flex-shrink-0 inline-block"
+              style="background:#3b82f6;color:#3b82f6"></span>
+        <span class="text-[9.5px]" style="color:#8b95a7" id="label-s2">File #2</span>
       </div>
-      <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600" id="badge-s2">Pending</span>
+      <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
+            style="background:rgba(255,255,255,0.09);color:#8b95a7" id="badge-s2">Pending</span>
     </div>
     <div class="text-[17px] font-bold font-mono leading-none" id="s-c2" style="color:#0088FF">—</div>
   </div>
 </div>
 
-<div class="h-[3px] bg-midnight-border rounded mb-3 overflow-hidden hidden" id="progWrap">
-  <div class="h-full w-0 bg-gradient-to-r from-[#6c63ff] to-accent rounded transition-[width] duration-300" id="progBar"></div>
+<div class="h-[3px] rounded mb-3 overflow-hidden hidden" style="background:rgba(255,255,255,0.08)" id="progWrap">
+  <div class="h-full w-0 rounded transition-[width] duration-300"
+       style="background:linear-gradient(90deg,#22d3ee,#3b82f6)" id="progBar"></div>
 </div>
 
 <div class="flex gap-1.5 mb-2.5">
-  <button id="resetBtn" type="button" class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-[#1c2333] border border-midnight-border">↺ Reset</button>
+  <button id="resetBtn" type="button"
+          class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
+          style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#e8eaed">↺ Reset</button>
 </div>
 
 <div class="mb-2.5">
-  <div class="text-[10.5px] text-slate-500 mb-1">Tên view muốn lưu (tuỳ chọn)</div>
-  <input type="text" id="viewName" placeholder="Ví dụ: Approval 2026-04-24" class="w-full px-2.5 py-2 bg-midnight-card border border-midnight-border rounded-lg text-[#1c2333] font-sans text-xs outline-none transition-colors duration-200 focus:border-accent"/>
+  <div class="text-[10.5px] mb-1" style="color:#8b95a7">Tên view muốn lưu (tuỳ chọn)</div>
+  <input type="text" id="viewName" placeholder="Ví dụ: Approval 2026-04-24"
+         class="w-full px-2.5 py-2 rounded-lg font-sans text-xs transition-all duration-200"
+         style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);color:#e8eaed"/>
 </div>
 <div class="flex gap-1.5">
-  <button id="saveBtn" type="button" class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] bg-midnight-card text-accent border border-accent">💾 Save View</button>
+  <button id="saveBtn" type="button"
+          class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px] text-accent"
+          style="background:rgba(34,211,238,0.07);border:1px solid rgba(34,211,238,0.35)">💾 Save View</button>
 </div>
 
-<div class="h-px bg-midnight-border my-3"></div>
+<div class="h-px my-3" style="background:rgba(255,255,255,0.08)"></div>
 
-<div class="text-[10px] text-slate-500 tracking-[0.06em] uppercase mb-1">Log</div>
-<div id="log" class="bg-midnight-surface border border-midnight-border rounded-lg px-[11px] py-2.5 max-h-[130px] tablet:max-h-[200px] overflow-y-auto font-mono text-[10.5px] leading-[1.65] text-slate-500 whitespace-pre-wrap break-all [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:bg-midnight-border [&::-webkit-scrollbar-thumb]:rounded-full"></div>
+<div class="text-[10px] tracking-[0.06em] uppercase mb-1 text-accent">Log</div>
+<div id="log"></div>
 
-<div class="mt-3 text-[10px] text-slate-500 text-center">Model Control Center v2.0 · Le Van Thao</div>
+<div class="mt-3 text-[10px] text-center" style="color:#8b95a7">Model Control Center v2.0 · Le Van Thao</div>
 
 <script src="app.js?v=7"></script>
 </body>
