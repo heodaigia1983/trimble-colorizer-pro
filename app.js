@@ -274,6 +274,7 @@ var QTY_PATTERNS = {
   length: /^Length$/i
 };
 var ASSEMBLY_TIERS = [
+  /^ASSEMBLY_POS$/i,
   /^assembly\s*position$/i,
   /assembly.*(mark|position|name)/i,
   /^mark$/i,
