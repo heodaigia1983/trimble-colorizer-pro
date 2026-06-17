@@ -428,6 +428,7 @@ async function captureSelection(){
     _selMap=map;
     info.textContent="Đã chọn: "+fmtN(total)+" cấu kiện";
     document.getElementById("paintSelBtn").disabled=false;
+    document.getElementById("qtyBtn3").disabled=false;
     log("✓ Lấy lựa chọn: "+fmtN(total)+" cấu kiện","ok");
   }catch(e){
     log("✗ "+(e&&e.message?e.message:String(e)),"err");
