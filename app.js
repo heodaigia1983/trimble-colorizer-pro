@@ -349,27 +349,27 @@ async function showQty(slot, map){
       var rows=Array.from(q.groups.entries()).sort(function(a,b){return a[0].localeCompare(b[0]);});
       var totalCount=0, totalWeight=0;
       var html='<table class="w-full text-[10.5px] font-mono border-collapse">'
-        +'<thead><tr class="text-slate-400 border-b border-midnight-border">'
-        +'<th class="text-left py-1 pr-2">Tên cấu kiện</th>'
-        +'<th class="text-right py-1 pr-2">SL</th>'
-        +'<th class="text-right py-1 pr-2">Dài</th>'
-        +'<th class="text-right py-1">Khối lượng (tấn)</th>'
+        +'<thead><tr style="background:#f0f2f5">'
+        +'<th class="text-left py-1.5 px-2" style="border:1px solid #d0d3d8;color:#5f6368;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Tên</th>'
+        +'<th class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#5f6368;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">SL</th>'
+        +'<th class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#5f6368;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Dài</th>'
+        +'<th class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#5f6368;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em">KL (tấn)</th>'
         +'</tr></thead><tbody>';
       rows.forEach(function(r){
         var name=r[0], g=r[1];
         totalCount+=g.count; totalWeight+=g.weight;
-        html+='<tr class="border-b border-midnight-border/50 text-[#e4e8f0]">'
-          +'<td class="py-1 pr-2">'+escapeHtml(name)+'</td>'
-          +'<td class="text-right py-1 pr-2">'+fmtN(g.count)+'</td>'
-          +'<td class="text-right py-1 pr-2">'+(g.length!=null?g.length.toLocaleString(undefined,{maximumFractionDigits:1}):'—')+'</td>'
-          +'<td class="text-right py-1">'+(g.weight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
+        html+='<tr>'
+          +'<td class="py-1 px-2" style="border:1px solid #e2e5ea;color:#1a1c1e">'+escapeHtml(name)+'</td>'
+          +'<td class="text-right py-1 px-2" style="border:1px solid #e2e5ea;color:#1a1c1e">'+fmtN(g.count)+'</td>'
+          +'<td class="text-right py-1 px-2" style="border:1px solid #e2e5ea;color:#1a1c1e">'+(g.length!=null?g.length.toLocaleString(undefined,{maximumFractionDigits:1}):'—')+'</td>'
+          +'<td class="text-right py-1 px-2" style="border:1px solid #e2e5ea;color:#1a1c1e">'+(g.weight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
           +'</tr>';
       });
-      html+='</tbody><tfoot><tr class="text-sys-green font-bold border-t border-midnight-border">'
-        +'<td class="py-1.5 pr-2">TỔNG</td>'
-        +'<td class="text-right py-1.5 pr-2">'+fmtN(totalCount)+'</td>'
-        +'<td class="text-right py-1.5 pr-2">—</td>'
-        +'<td class="text-right py-1.5">'+(totalWeight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
+      html+='</tbody><tfoot><tr style="background:#e8f0fe">'
+        +'<td class="py-1.5 px-2" style="border:1px solid #d0d3d8;color:#1a73e8;font-weight:700">TỔNG</td>'
+        +'<td class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#1a73e8;font-weight:700">'+fmtN(totalCount)+'</td>'
+        +'<td class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#1a73e8;font-weight:700">—</td>'
+        +'<td class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#1a73e8;font-weight:700">'+(totalWeight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
         +'</tr></tfoot></table>'
         +'<div class="text-[10px] text-slate-500 mt-1">'+q.hit+' object có dữ liệu, '+q.miss+' object không có.</div>';
       resEl.innerHTML=html;
@@ -535,4 +535,4 @@ document.getElementById("noteInput2").addEventListener("blur",function(){localSt
 document.getElementById("noteInput3").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot3",this.value);addNoteMarkup(3);});
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
-document.getElementById("qtyBtn3").addEventListener("click",function(){showQty(3,_selMap);});
+document.getElementById("qtyBtn3").addEventListener("click",async function(){await captureSelection();if(_selMap)showQty(3,_selMap);});
