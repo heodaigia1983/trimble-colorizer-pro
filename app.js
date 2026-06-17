@@ -451,6 +451,7 @@ async function paintSelection(){
     }
     log("✓ Đã tô "+fmtN(done)+" cấu kiện.","ok");
     document.getElementById("qtyBtn3").disabled=false;
+    await addNoteMarkup(3);
   }catch(e){
     log("✗ "+(e&&e.message?e.message:String(e)),"err");
   }finally{
@@ -460,6 +461,61 @@ async function paintSelection(){
 
 /* ═══ Markup ghi chú (auto) ═══ */
 function hex2rgba(hex){var h=hex.replace("#","");return{r:parseInt(h.substr(0,2),16),g:parseInt(h.substr(2,2),16),b:parseInt(h.substr(4,2),16),a:255};}
+function mergeBoundingBox(existing, bbox){
+  if(!bbox||bbox.min==null||bbox.max==null)return existing;
+  if(!existing)return {min:{x:bbox.min.x,y:bbox.min.y,z:bbox.min.z},max:{x:bbox.max.x,y:bbox.max.y,z:bbox.max.z}};
+  existing.min.x = Math.min(existing.min.x,bbox.min.x);
+  existing.min.y = Math.min(existing.min.y,bbox.min.y);
+  existing.min.z = Math.min(existing.min.z,bbox.min.z);
+  existing.max.x = Math.max(existing.max.x,bbox.max.x);
+  existing.max.y = Math.max(existing.max.y,bbox.max.y);
+  existing.max.z = Math.max(existing.max.z,bbox.max.z);
+  return existing;
+}
+function getMarkupColor(slot){return slot===3?_color3:MARKUP_COLOR;}
+async function getMapBoundingBox(api,map){
+  if(!map||!map.size)return null;
+  var merged=null;
+  for(var entry of map){
+    var modelId=entry[0], ids=entry[1];
+    if(!Array.isArray(ids)||!ids.length)continue;
+    var boxes=null;
+    if(typeof api.viewer.getObjectBoundingBoxes==="function"){
+      try{boxes=await api.viewer.getObjectBoundingBoxes(modelId,ids);}catch(e){boxes=null;}
+    }
+    if((!boxes||!boxes.length) && typeof api.viewer.getObjectBoundingBox==="function"){
+      try{var single=await api.viewer.getObjectBoundingBox({modelId:modelId,objectRuntimeIds:ids});
+        if(single){boxes=Array.isArray(single)?single:[single];}
+      }catch(e){boxes=null;}
+    }
+    if(!boxes||!boxes.length){
+      try{
+        var raw=await api.viewer.getSelection();
+        if(Array.isArray(raw)){
+          var selIds=[];
+          raw.forEach(function(item){
+            if(!item||item.modelId!==modelId)return;
+            var found=(item.objects||item.objectRuntimeIds||item.ids);
+            if(Array.isArray(found)) selIds = selIds.concat(found);
+          });
+          if(selIds.length && typeof api.viewer.getObjectBoundingBoxes==="function"){
+            try{boxes=await api.viewer.getObjectBoundingBoxes(modelId,selIds);}catch(e){boxes=null;}
+          }
+        }
+      }catch(e){boxes=null;}
+    }
+    if(Array.isArray(boxes)){
+      boxes.forEach(function(item){
+        if(!item) return;
+        var bbox = item.boundingBox || item;
+        if(bbox && bbox.min!=null && bbox.max!=null){
+          merged = mergeBoundingBox(merged,bbox);
+        }
+      });
+    }
+  }
+  return merged;
+}
 function getFirstAnchor(map){if(!map||!map.size)return null;for(var entry of map){if(entry[1]&&entry[1].length)return{modelId:entry[0],id:entry[1][0]};}return null;}
 
 async function addNoteMarkup(slot){
@@ -472,17 +528,18 @@ async function addNoteMarkup(slot){
       if(_noteMarkupId[slot]!=null){await api.markup.removeMarkups([_noteMarkupId[slot]]);_noteMarkupId[slot]=null;}
       return;
     }
-    var anchor=getFirstAnchor(map);
-    if(!anchor){log("✗ Chưa có cấu kiện để gắn markup (Slot "+slot+").","warn");return;}
-    var bb=await api.viewer.getObjectBoundingBoxes(anchor.modelId,[anchor.id]);
-    if(!bb||!bb.length||!bb[0].boundingBox){log("✗ Không lấy được vị trí cấu kiện.","warn");return;}
-    var b=bb[0].boundingBox;
-    var cx=(b.min.x+b.max.x)/2, cy=(b.min.y+b.max.y)/2, topZ=b.max.z;
+    var bb = await getMapBoundingBox(api,map);
+    if(!bb||bb.min==null||bb.max==null){
+      log("✗ Không lấy được vị trí vùng chọn để gắn markup.","warn");
+      return;
+    }
+    var cx=(bb.min.x+bb.max.x)/2, cy=(bb.min.y+bb.max.y)/2, cz=(bb.min.z+bb.max.z)/2;
+    var offset = Math.max(Math.abs(bb.max.x-bb.min.x), Math.abs(bb.max.y-bb.min.y), Math.abs(bb.max.z-bb.min.z))/2 || 1000;
     var m={
-      start:{modelId:anchor.modelId,objectId:anchor.id,positionX:cx,positionY:cy,positionZ:topZ},
-      end:{positionX:cx+1500,positionY:cy+1500,positionZ:topZ+1500},
+      start:{positionX:cx,positionY:cy,positionZ:cz},
+      end:{positionX:cx+offset,positionY:cy+offset,positionZ:cz+offset},
       text:text,
-      color:hex2rgba(MARKUP_COLOR)
+      color:hex2rgba(getMarkupColor(slot))
     };
     if(_noteMarkupId[slot]!=null)m.id=_noteMarkupId[slot];
     var added=await api.markup.addTextMarkup([m]);
