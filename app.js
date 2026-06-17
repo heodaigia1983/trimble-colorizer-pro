@@ -23,6 +23,8 @@ var _color3 = "#FF0000";
 var _selMap = null;
 var _map1 = null;
 var _map2 = null;
+var _noteMarkupId = {1:null,2:null,3:null};
+var MARKUP_COLOR = "#FF1493";
 
 /* ═══ UI ═══ */
 /* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
@@ -455,6 +457,41 @@ async function paintSelection(){
   }
 }
 
+/* ═══ Markup ghi chú (auto) ═══ */
+function hex2rgba(hex){var h=hex.replace("#","");return{r:parseInt(h.substr(0,2),16),g:parseInt(h.substr(2,2),16),b:parseInt(h.substr(4,2),16),a:255};}
+function getFirstAnchor(map){if(!map||!map.size)return null;for(var entry of map){if(entry[1]&&entry[1].length)return{modelId:entry[0],id:entry[1][0]};}return null;}
+
+async function addNoteMarkup(slot){
+  var map = slot===1?_map1:slot===2?_map2:_selMap;
+  var noteEl = document.getElementById("noteInput"+slot);
+  var text = noteEl.value.trim();
+  try{
+    var api=await getAPI();
+    if(!text){
+      if(_noteMarkupId[slot]!=null){await api.markup.removeMarkups([_noteMarkupId[slot]]);_noteMarkupId[slot]=null;}
+      return;
+    }
+    var anchor=getFirstAnchor(map);
+    if(!anchor){log("✗ Chưa có cấu kiện để gắn markup (Slot "+slot+").","warn");return;}
+    var bb=await api.viewer.getObjectBoundingBoxes(anchor.modelId,[anchor.id]);
+    if(!bb||!bb.length||!bb[0].boundingBox){log("✗ Không lấy được vị trí cấu kiện.","warn");return;}
+    var b=bb[0].boundingBox;
+    var cx=(b.min.x+b.max.x)/2, cy=(b.min.y+b.max.y)/2, topZ=b.max.z;
+    var m={
+      start:{modelId:anchor.modelId,objectId:anchor.id,positionX:cx,positionY:cy,positionZ:topZ},
+      end:{positionX:cx+1500,positionY:cy+1500,positionZ:topZ+1500},
+      text:text,
+      color:hex2rgba(MARKUP_COLOR)
+    };
+    if(_noteMarkupId[slot]!=null)m.id=_noteMarkupId[slot];
+    var added=await api.markup.addTextMarkup([m]);
+    if(added&&added[0]&&added[0].id!=null)_noteMarkupId[slot]=added[0].id;
+    log("✓ Đã gắn markup ghi chú (Slot "+slot+").","ok");
+  }catch(e){
+    log("✗ "+(e&&e.message?e.message:String(e)),"err");
+  }
+}
+
 /* ═══ Save View ═══ */
 async function saveView(){
   try{var api=await getAPI();var inp=document.getElementById("viewName");var name=inp?inp.value.trim():"";
@@ -493,9 +530,9 @@ document.getElementById("resetBtn").addEventListener("click",resetViewer);
 document.getElementById("saveBtn").addEventListener("click",saveView);
 document.getElementById("captureSelBtn").addEventListener("click",captureSelection);
 document.getElementById("paintSelBtn").addEventListener("click",paintSelection);
-document.getElementById("noteInput1").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot1",this.value);});
-document.getElementById("noteInput2").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot2",this.value);});
-document.getElementById("noteInput3").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot3",this.value);});
+document.getElementById("noteInput1").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot1",this.value);addNoteMarkup(1);});
+document.getElementById("noteInput2").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot2",this.value);addNoteMarkup(2);});
+document.getElementById("noteInput3").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot3",this.value);addNoteMarkup(3);});
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
 document.getElementById("qtyBtn3").addEventListener("click",function(){showQty(3,_selMap);});
