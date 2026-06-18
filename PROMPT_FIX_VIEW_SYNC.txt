@@ -1,0 +1,123 @@
+Mở file app.js và index.html trong thư mục trimble-colorizer-pro.
+
+Bug: khi tạo View mới rồi đổi màu, màu trên viewer và bảng kê (#colorLedger) bị lệch nhau (viewer có cả màu cũ còn sót + màu mới, bảng kê chỉ có 1 dòng).
+
+Nguyên nhân: bảng kê chỉ lưu {kl, note} theo màu — không lưu object nào đã được tô màu đó, nên không thể "vẽ lại đúng" khi đổi view. Màu trên viewer là state sống, không tự reset khi tạo View mới, nên view mới bị dính màu cũ còn sót lại trong khi bảng kê (đọc theo id view mới) lại trống.
+
+Cách sửa: (1) lưu thêm danh sách object đã tô theo từng màu trong bảng kê, (2) khi đổi qua view khác → tự reset viewer rồi vẽ lại đúng y theo bảng kê của view đó, (3) khi bấm Save View → lưu màu hiện tại vào view mới tạo, sau đó tự reset sạch canvas + bảng kê để tô cho view kế tiếp.
+
+════════════════════════════
+A. APP.JS
+════════════════════════════
+
+1) Thêm biến theo dõi "view đang gắn lưu bảng kê" (tách biệt với view đang active trên Trimble):
+
+Tìm:
+var _colorLedger = {};
+var _currentViewId = null;
+var _viewPollInterval = null;
+
+Thay bằng:
+var _colorLedger = {};
+var _currentViewId = null;
+var _ledgerViewId = null;
+var _viewPollInterval = null;
+
+2) getLedgerKey() — lưu theo _ledgerViewId (không phải _currentViewId):
+
+Tìm:
+function getLedgerKey(){return _currentViewId?"colorstudio_"+_currentViewId:null;}
+
+Thay bằng:
+function getLedgerKey(){return _ledgerViewId?"colorstudio_"+_ledgerViewId:null;}
+
+3) loadLedger() — gắn _ledgerViewId khi load, và vẽ lại viewer đúng theo bảng kê (thêm hàm repaintLedger):
+
+Tìm:
+function loadLedger(viewId){try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?JSON.parse(raw):{};}catch(e){_colorLedger={};}renderColorLedger();}
+
+Thay bằng:
+function loadLedger(viewId){_ledgerViewId=viewId;try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?JSON.parse(raw):{};}catch(e){_colorLedger={};}renderColorLedger();repaintLedger();}
+async function repaintLedger(){
+  try{
+    var api=await getAPI();
+    try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}
+    for(var hex in _colorLedger){
+      var objs=_colorLedger[hex].objs;
+      if(!Array.isArray(objs))continue;
+      for(var i=0;i<objs.length;i++){
+        await paintBatch(api,objs[i].modelId,objs[i].ids,{visible:true,color:hex});
+      }
+    }
+  }catch(e){}
+}
+
+4) paintSelection() — lưu thêm object id đã tô vào bảng kê (để repaintLedger có dữ liệu mà vẽ lại):
+
+Tìm:
+    if(!_colorLedger[hex])_colorLedger[hex]={kl:0,note:""};
+    _colorLedger[hex].kl+=kl;
+    _colorLedger[hex].note=note||_colorLedger[hex].note;
+    renderColorLedger();
+    saveLedger();
+
+Thay bằng:
+    if(!_colorLedger[hex])_colorLedger[hex]={kl:0,note:"",objs:[]};
+    _colorLedger[hex].kl+=kl;
+    _colorLedger[hex].note=note||_colorLedger[hex].note;
+    if(!Array.isArray(_colorLedger[hex].objs))_colorLedger[hex].objs=[];
+    _selMap.forEach(function(ids,mid){
+      var ent=_colorLedger[hex].objs.find(function(o){return o.modelId===mid;});
+      if(!ent){ent={modelId:mid,ids:[]};_colorLedger[hex].objs.push(ent);}
+      ids.forEach(function(id){if(ent.ids.indexOf(id)===-1)ent.ids.push(id);});
+    });
+    renderColorLedger();
+    saveLedger();
+
+5) resetViewer() — bấm Reset cũng phải xóa luôn bảng kê + thoát khỏi view hiện tại (tránh lệch tương tự):
+
+Tìm:
+  _map1=null;_map2=null;_selMap=null;
+  [1,2].forEach(function(n){
+
+Thay bằng:
+  _map1=null;_map2=null;_selMap=null;
+  _colorLedger={};_ledgerViewId=null;renderColorLedger();
+  [1,2].forEach(function(n){
+
+6) saveView() — sau khi tạo view mới thành công: lưu bảng kê hiện tại vào view đó, rồi tự reset sạch canvas + bảng kê để tô cho view kế tiếp:
+
+Tìm:
+  async function doSave(){var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);}
+  try{await doSave();}catch(e1){await new Promise(r=>setTimeout(r,2000));try{await doSave();}catch(e2){log("✗ Không thể lưu view — anh thử bấm Save View lại sau vài giây.","err");return;}}
+  log('✓ View: "'+name+'"',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+
+Thay bằng:
+  async function doSave(){var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);return c.id;}
+  var newId;
+  try{newId=await doSave();}catch(e1){await new Promise(r=>setTimeout(r,2000));try{newId=await doSave();}catch(e2){log("✗ Không thể lưu view — anh thử bấm Save View lại sau vài giây.","err");return;}}
+  _currentViewId=String(newId);
+  _ledgerViewId=_currentViewId;
+  saveLedger();
+  _colorLedger={};
+  _ledgerViewId=null;
+  renderColorLedger();
+  try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e3){}
+  log('✓ View: "'+name+'" — đã lưu màu cho view này. Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+
+════════════════════════════
+B. CACHE-BUST (bắt buộc)
+════════════════════════════
+
+7) index.html: đổi `<script src="app.js?v=10"></script>` thành `<script src="app.js?v=11"></script>`
+8) manifest.json: đổi `"url": "...index.html?v=10"` thành `"url": "...index.html?v=11"`
+
+════════════════════════════
+Lưu ý vận hành sau khi sửa
+════════════════════════════
+
+- Mỗi lần đổi qua 1 View khác (qua panel View của Trimble), app tự nhận diện (polling 5s) → tự reset viewer → vẽ lại đúng màu đã lưu của view đó. Không cần làm gì thêm.
+- Bấm "Save View": màu hiện tại được gắn cố định vào view mới tạo, sau đó canvas + bảng kê tự sạch để anh tô tiếp cho view sau — không cần bấm Reset tay nữa.
+- Bấm "Reset" (tay): vẫn dùng như cũ, xóa hết màu + bảng kê hiện tại, không gắn vào view nào.
+
+Không đổi gì khác ngoài các chỗ trên. Sau khi sửa xong, tôi tự git add/commit/push.

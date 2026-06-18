@@ -734,6 +734,8 @@ async function loadView(viewId){
   try{
     var api=await getAPI();
     await api.view.selectView(viewId);
+    // Đợi viewer load xong view mới rồi mới tô màu
+    await sleep(2000);
   }catch(e){log("⚠ Không chuyển được view trên viewer: "+(e&&e.message?e.message:String(e)),"warn");}
 
   // Khôi phục guids và tô màu lại
