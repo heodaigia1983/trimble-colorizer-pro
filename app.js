@@ -27,6 +27,7 @@ var _noteMarkupId = {1:null,2:null,3:null};
 var MARKUP_COLOR = "#FF1493";
 var _colorLedger = {};
 var _currentViewId = null;
+var _ledgerViewId = null;
 var _viewPollInterval = null;
 
 /* ═══ UI ═══ */
@@ -166,9 +167,22 @@ function ifc2uuid(c){if(!c||c.length!==22)return null;var p=[from64(c.substr(0,2
 function detectFmt(g){if(!g)return"x";var s=String(g).trim();if(s.length===36&&/^[0-9a-f]{8}-/i.test(s))return"uuid";if(s.length===32&&/^[0-9a-f]{32}$/i.test(s))return"nd";if(s.length===22)return"ifc";return"x";}
 
 /* ═══ Ledger persistence (per-view) ═══ */
-function getLedgerKey(){return _currentViewId?"colorstudio_"+_currentViewId:null;}
+function getLedgerKey(){return _ledgerViewId?"colorstudio_"+_ledgerViewId:null;}
 function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(_colorLedger));}catch(e){}}
-function loadLedger(viewId){try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?JSON.parse(raw):{};}catch(e){_colorLedger={};}renderColorLedger();}
+function loadLedger(viewId){_ledgerViewId=viewId;try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?JSON.parse(raw):{};}catch(e){_colorLedger={};}renderColorLedger();repaintLedger();}
+async function repaintLedger(){
+  try{
+    var api=await getAPI();
+    try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}
+    for(var hex in _colorLedger){
+      var objs=_colorLedger[hex].objs;
+      if(!Array.isArray(objs))continue;
+      for(var i=0;i<objs.length;i++){
+        await paintBatch(api,objs[i].modelId,objs[i].ids,{visible:true,color:hex});
+      }
+    }
+  }catch(e){}
+}
 async function initActiveView(api){
   try{
     var view=await api.viewer.getActiveView();
@@ -415,6 +429,7 @@ async function resetViewer(){
   try{var api=await getAPI();try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}await api.viewer.reset();
   setStat("s-total","—");setStat("s-c1","—");setStat("s-c2","—");
   _map1=null;_map2=null;_selMap=null;
+  _colorLedger={};_ledgerViewId=null;renderColorLedger();
   [1,2].forEach(function(n){
     document.getElementById("qtyBtn"+n).disabled=true;
     document.getElementById("qtyResult"+n).classList.add("hidden");
@@ -486,9 +501,15 @@ async function paintSelection(){
       var q=await fetchQuantities(api,_selMap);
       var tw=0;q.groups.forEach(function(g){tw+=g.weight;});kl=tw/1000;
     }catch(e2){}
-    if(!_colorLedger[hex])_colorLedger[hex]={kl:0,note:""};
+    if(!_colorLedger[hex])_colorLedger[hex]={kl:0,note:"",objs:[]};
     _colorLedger[hex].kl+=kl;
     _colorLedger[hex].note=note||_colorLedger[hex].note;
+    if(!Array.isArray(_colorLedger[hex].objs))_colorLedger[hex].objs=[];
+    _selMap.forEach(function(ids,mid){
+      var ent=_colorLedger[hex].objs.find(function(o){return o.modelId===mid;});
+      if(!ent){ent={modelId:mid,ids:[]};_colorLedger[hex].objs.push(ent);}
+      ids.forEach(function(id){if(ent.ids.indexOf(id)===-1)ent.ids.push(id);});
+    });
     renderColorLedger();
     saveLedger();
   }catch(e){
@@ -641,9 +662,17 @@ async function saveView(){
   try{var api=await getAPI();var inp=document.getElementById("viewName");var name=inp?inp.value.trim():"";
   if(!name){var n=new Date();name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());if(inp)inp.value=name;}
   await new Promise(r=>setTimeout(r,1500));
-  async function doSave(){var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);}
-  try{await doSave();}catch(e1){await new Promise(r=>setTimeout(r,2000));try{await doSave();}catch(e2){log("✗ Không thể lưu view — anh thử bấm Save View lại sau vài giây.","err");return;}}
-  log('✓ View: "'+name+'"',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+  async function doSave(){var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);return c.id;}
+  var newId;
+  try{newId=await doSave();}catch(e1){await new Promise(r=>setTimeout(r,2000));try{newId=await doSave();}catch(e2){log("✗ Không thể lưu view — anh thử bấm Save View lại sau vài giây.","err");return;}}
+  _currentViewId=String(newId);
+  _ledgerViewId=_currentViewId;
+  saveLedger();
+  _colorLedger={};
+  _ledgerViewId=null;
+  renderColorLedger();
+  try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e3){}
+  log('✓ View: "'+name+'" — đã lưu màu cho view này. Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
 
 /* ═══ File Events ═══ */
