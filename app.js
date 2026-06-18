@@ -26,6 +26,8 @@ var _map2 = null;
 var _noteMarkupId = {1:null,2:null,3:null};
 var MARKUP_COLOR = "#FF1493";
 var _colorLedger = {};
+var _currentViewId = null;
+var _viewPollInterval = null;
 
 /* ═══ UI ═══ */
 /* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
@@ -163,8 +165,30 @@ function uuid2ifc(u){if(!u)return null;var h=String(u).replace(/-/g,"").toLowerC
 function ifc2uuid(c){if(!c||c.length!==22)return null;var p=[from64(c.substr(0,2))];for(var i=0;i<5;i++)p.push(from64(c.substr(2+i*4,4)));if(p.some(function(x){return x<0;}))return null;var h=p[0].toString(16).padStart(2,"0");for(var i=1;i<6;i++)h+=p[i].toString(16).padStart(6,"0");return h.substr(0,8)+"-"+h.substr(8,4)+"-"+h.substr(12,4)+"-"+h.substr(16,4)+"-"+h.substr(20,12);}
 function detectFmt(g){if(!g)return"x";var s=String(g).trim();if(s.length===36&&/^[0-9a-f]{8}-/i.test(s))return"uuid";if(s.length===32&&/^[0-9a-f]{32}$/i.test(s))return"nd";if(s.length===22)return"ifc";return"x";}
 
+/* ═══ Ledger persistence (per-view) ═══ */
+function getLedgerKey(){return _currentViewId?"colorstudio_"+_currentViewId:null;}
+function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(_colorLedger));}catch(e){}}
+function loadLedger(viewId){try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?JSON.parse(raw):{};}catch(e){_colorLedger={};}renderColorLedger();}
+async function initActiveView(api){
+  try{
+    var view=await api.viewer.getActiveView();
+    var id=view&&(view.id||view.name);
+    if(id){_currentViewId=String(id);loadLedger(_currentViewId);}
+  }catch(e){}
+  if(!_viewPollInterval){
+    _viewPollInterval=setInterval(async function(){
+      try{
+        if(!_api)return;
+        var view=await _api.viewer.getActiveView();
+        var id=view&&(view.id||view.name);
+        if(id&&String(id)!==_currentViewId){_currentViewId=String(id);loadLedger(_currentViewId);}
+      }catch(e){}
+    },5000);
+  }
+}
+
 /* ═══ API ═══ */
-async function getAPI(){if(_api)return _api;_api=await TrimbleConnectWorkspace.connect(window.parent,function(e,d){console.log("[T]",e,d);});log("Đã kết nối Trimble API.","ok");return _api;}
+async function getAPI(){if(_api)return _api;_api=await TrimbleConnectWorkspace.connect(window.parent,function(e,d){console.log("[T]",e,d);});log("Đã kết nối Trimble API.","ok");initActiveView(_api);return _api;}
 
 /* ═══ Excel ═══ */
 function readWB(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(e){try{ok(XLSX.read(e.target.result,{type:"array"}));}catch(err){no(err);}};r.onerror=no;r.readAsArrayBuffer(f);});}
@@ -466,6 +490,7 @@ async function paintSelection(){
     _colorLedger[hex].kl+=kl;
     _colorLedger[hex].note=note||_colorLedger[hex].note;
     renderColorLedger();
+    saveLedger();
   }catch(e){
     log("✗ "+(e&&e.message?e.message:String(e)),"err");
   }finally{
@@ -586,7 +611,7 @@ function renderColorLedger(){
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea">'
       +'<div style="width:16px;height:16px;border-radius:3px;background:'+hex+';border:1px solid rgba(0,0,0,0.12)"></div></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+e.kl.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-hex="'+hex+'" value="'+escapeHtml(e.note)+'" placeholder="Ghi chú..." onblur="if(_colorLedger[this.dataset.hex])_colorLedger[this.dataset.hex].note=this.value.trim()" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-hex="'+hex+'" value="'+escapeHtml(e.note)+'" placeholder="Ghi chú..." onblur="if(_colorLedger[this.dataset.hex]){_colorLedger[this.dataset.hex].note=this.value.trim();saveLedger();}" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
   });
   html+='</tbody></table>';
