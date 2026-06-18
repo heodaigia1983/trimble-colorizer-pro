@@ -25,6 +25,7 @@ var _map1 = null;
 var _map2 = null;
 var _noteMarkupId = {1:null,2:null,3:null};
 var MARKUP_COLOR = "#FF1493";
+var _colorLedger = {};
 
 /* ═══ UI ═══ */
 /* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
@@ -92,6 +93,8 @@ function setColor(slot, hex){
     document.getElementById("hex3").value=hex;
     document.getElementById("num3").style.background=hex;
     document.getElementById("num3").style.color=isLightColor(hex)?"#000":"#fff";
+    var ni=document.getElementById("noteInput");
+    if(ni) ni.value=(_colorLedger[hex]?_colorLedger[hex].note:"");
   }
 }
 
@@ -374,9 +377,7 @@ async function showQty(slot, map){
         +'<div class="text-[10px] text-slate-500 mt-1">'+q.hit+' object có dữ liệu, '+q.miss+' object không có.</div>';
       resEl.innerHTML=html;
     }
-    noteEl.classList.remove("hidden");
-    var saved=localStorage.getItem("mcc_note_slot"+slot);
-    if(saved!=null)noteEl.value=saved;
+    if(noteEl){noteEl.classList.remove("hidden");var saved=localStorage.getItem("mcc_note_slot"+slot);if(saved!=null)noteEl.value=saved;}
     log("✓ Slot "+slot+": đã sáng "+fmtN(total)+" object trên model.","ok");
   }catch(e){
     resEl.innerHTML='<div class="text-[11px] font-mono text-sys-red">✗ '+escapeHtml(e&&e.message?e.message:String(e))+'</div>';
@@ -390,11 +391,13 @@ async function resetViewer(){
   try{var api=await getAPI();try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}await api.viewer.reset();
   setStat("s-total","—");setStat("s-c1","—");setStat("s-c2","—");
   _map1=null;_map2=null;_selMap=null;
-  [1,2,3].forEach(function(n){
+  [1,2].forEach(function(n){
     document.getElementById("qtyBtn"+n).disabled=true;
     document.getElementById("qtyResult"+n).classList.add("hidden");
     document.getElementById("noteInput"+n).classList.add("hidden");
   });
+  document.getElementById("qtyBtn3").disabled=true;
+  document.getElementById("qtyResult3").classList.add("hidden");
   setProgress(100);log("✓ Reset OK.","ok");setTimeout(function(){setProgress(0);},1000);}
   catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");setProgress(0);}
   finally{lockUI(false);checkApplyBtn(1);checkApplyBtn(2);}
@@ -451,7 +454,18 @@ async function paintSelection(){
     }
     log("✓ Đã tô "+fmtN(done)+" cấu kiện.","ok");
     document.getElementById("qtyBtn3").disabled=false;
-    await addNoteMarkup(3);
+    var hex=_color3;
+    var note=(document.getElementById("noteInput")||{}).value;
+    note=note?note.trim():"";
+    var kl=0;
+    try{
+      var q=await fetchQuantities(api,_selMap);
+      var tw=0;q.groups.forEach(function(g){tw+=g.weight;});kl=tw/1000;
+    }catch(e2){}
+    if(!_colorLedger[hex])_colorLedger[hex]={kl:0,note:""};
+    _colorLedger[hex].kl+=kl;
+    _colorLedger[hex].note=note||_colorLedger[hex].note;
+    renderColorLedger();
   }catch(e){
     log("✗ "+(e&&e.message?e.message:String(e)),"err");
   }finally{
@@ -550,6 +564,56 @@ async function addNoteMarkup(slot){
   }
 }
 
+/* ═══ Color Ledger ═══ */
+function renderColorLedger(){
+  var el=document.getElementById("colorLedger");
+  var expBtn=document.getElementById("exportLedgerBtn");
+  if(!el)return;
+  var keys=Object.keys(_colorLedger);
+  if(!keys.length){el.classList.add("hidden");if(expBtn)expBtn.classList.add("hidden");return;}
+  var html='<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:#f0f2f5;position:sticky;top:0;z-index:2">'
+    +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">STT</th>'
+    +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Màu</th>'
+    +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">KL (Tấn)</th>'
+    +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ghi chú</th>'
+    +'</tr></thead><tbody>';
+  keys.forEach(function(hex,idx){
+    var e=_colorLedger[hex];
+    var bg=idx%2===0?"#ffffff":"#f7f8fa";
+    html+='<tr style="background:'+bg+'">'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;font-size:10.5px;color:#1a1c1e">'+(idx+1)+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea">'
+      +'<div style="display:flex;align-items:center;gap:6px">'
+      +'<div style="width:16px;height:16px;border-radius:3px;background:'+hex+';flex-shrink:0;border:1px solid rgba(0,0,0,0.12)"></div>'
+      +'<span style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+escapeHtml(hex)+'</span>'
+      +'</div></td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+e.kl.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;font-size:10.5px;color:#1a1c1e">'+escapeHtml(e.note)+'</td>'
+      +'</tr>';
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+  el.classList.remove("hidden");
+  if(expBtn)expBtn.classList.remove("hidden");
+}
+
+function exportLedger(){
+  var keys=Object.keys(_colorLedger);
+  if(!keys.length){log("✗ Bảng kê trống.","warn");return;}
+  var data=[["STT","Màu","KL (Tấn)","Ghi chú"]];
+  keys.forEach(function(hex,idx){
+    var e=_colorLedger[hex];
+    data.push([idx+1,hex,parseFloat(e.kl.toFixed(3)),e.note]);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(data);
+  var wb2=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb2,ws,"Bang ke");
+  var d=new Date();
+  XLSX.writeFile(wb2,"bang-ke-"+d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+".xlsx");
+  log("✓ Xuất bảng kê thành công.","ok");
+}
+
 /* ═══ Save View ═══ */
 async function saveView(){
   try{var api=await getAPI();var inp=document.getElementById("viewName");var name=inp?inp.value.trim():"";
@@ -590,7 +654,7 @@ document.getElementById("captureSelBtn").addEventListener("click",captureSelecti
 document.getElementById("paintSelBtn").addEventListener("click",paintSelection);
 document.getElementById("noteInput1").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot1",this.value);addNoteMarkup(1);});
 document.getElementById("noteInput2").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot2",this.value);addNoteMarkup(2);});
-document.getElementById("noteInput3").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot3",this.value);addNoteMarkup(3);});
+document.getElementById("exportLedgerBtn").addEventListener("click",exportLedger);
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
 document.getElementById("qtyBtn3").addEventListener("click",async function(){await captureSelection();if(_selMap)showQty(3,_selMap);});
