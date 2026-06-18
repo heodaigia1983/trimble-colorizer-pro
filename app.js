@@ -287,11 +287,34 @@ function deserializeColorLedger(raw){
   }
   return map;
 }
+/* Storage nén (LZ-string) cho payload view lớn — tránh vượt quota localStorage.
+   Ghi kèm prefix "LZ1:" để nhận biết; dữ liệu cũ chưa nén vẫn đọc được bình thường. */
+function lsSetCompressed(key,obj){
+  var json=JSON.stringify(obj);
+  var data=(window.LZString&&LZString.compressToUTF16)?("LZ1:"+LZString.compressToUTF16(json)):json;
+  try{
+    localStorage.setItem(key,data);
+  }catch(e){
+    if(e&&(e.name==="QuotaExceededError"||e.name==="NS_ERROR_DOM_QUOTA_REACHED"||e.code===22||e.code===1014)){
+      var q=new Error("QUOTA_EXCEEDED");q.quota=true;throw q;
+    }
+    throw e;
+  }
+}
+function lsGetDecompressed(key){
+  var raw=localStorage.getItem(key);
+  if(raw==null)return null;
+  if(raw.slice(0,4)==="LZ1:"){
+    if(window.LZString&&LZString.decompressFromUTF16){try{return LZString.decompressFromUTF16(raw.slice(4));}catch(e){return null;}}
+    return null;
+  }
+  return raw; // dữ liệu cũ chưa nén
+}
 function getLedgerKey(){return _ledgerViewId?"colorstudio_"+_ledgerViewId:null;}
-function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(serializeColorLedger()));}catch(e){}}
+function saveLedger(){var key=getLedgerKey();if(!key)return;try{lsSetCompressed(key,serializeColorLedger());}catch(e){}}
 async function loadLedger(viewId){
   _ledgerViewId=viewId;
-  try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?deserializeColorLedger(raw):new Map();}catch(e){_colorLedger=new Map();}
+  try{var raw=lsGetDecompressed("colorstudio_"+viewId);_colorLedger=raw?deserializeColorLedger(raw):new Map();}catch(e){_colorLedger=new Map();}
   await rebuildColorLedgerSummary();
   await renderColorLedger();
   await repaintLedger();
@@ -882,7 +905,7 @@ async function saveView(){
       selMapSerialized:_selMap?Array.from(_selMap.entries()).map(function(e){return{modelId:e[0],ids:e[1]};}):[],
       colorLedger:serializeColorLedger()
     };
-    localStorage.setItem("mcc_view_"+c.id,JSON.stringify(state));
+    lsSetCompressed("mcc_view_"+c.id,state);
 
     // Cập nhật danh sách view
     var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
@@ -899,11 +922,17 @@ async function saveView(){
 
     log('✓ View đã lưu: "'+name+'" — Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");
     renderViewList();
-  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+  }catch(e){
+    if(e&&e.quota){
+      log("✗ Không lưu được view: dữ liệu quá lớn, vượt giới hạn bộ nhớ trình duyệt (localStorage). Model này có quá nhiều cấu kiện đã tô. Hãy xoá bớt view cũ trong danh sách Saved Views rồi thử lại.","err");
+    }else{
+      log("✗ "+(e&&e.message?e.message:String(e)),"err");
+    }
+  }
 }
 
 async function loadView(viewId){
-  var raw=localStorage.getItem("mcc_view_"+viewId);
+  var raw=lsGetDecompressed("mcc_view_"+viewId);
   if(!raw){log("✗ Không tìm thấy dữ liệu view này.","warn");return;}
   var state;
   try{state=JSON.parse(raw);}catch(e){log("✗ Dữ liệu view bị lỗi.","err");return;}
