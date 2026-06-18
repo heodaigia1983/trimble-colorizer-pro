@@ -615,8 +615,9 @@ function exportLedger(){
 async function saveView(){
   try{var api=await getAPI();var inp=document.getElementById("viewName");var name=inp?inp.value.trim():"";
   if(!name){var n=new Date();name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());if(inp)inp.value=name;}
-  var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});
-  if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);
+  await new Promise(r=>setTimeout(r,1500));
+  async function doSave(){var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);}
+  try{await doSave();}catch(e1){await new Promise(r=>setTimeout(r,2000));try{await doSave();}catch(e2){log("✗ Không thể lưu view — anh thử bấm Save View lại sau vài giây.","err");return;}}
   log('✓ View: "'+name+'"',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
 
