@@ -659,20 +659,135 @@ function exportLedger(){
 
 /* ═══ Save View ═══ */
 async function saveView(){
-  try{var api=await getAPI();var inp=document.getElementById("viewName");var name=inp?inp.value.trim():"";
-  if(!name){var n=new Date();name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());if(inp)inp.value=name;}
-  await new Promise(r=>setTimeout(r,1500));
-  async function doSave(){var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});if(!c||!c.id)throw new Error("No view ID.");await api.view.updateView({id:c.id});await api.view.selectView(c.id);return c.id;}
-  var newId;
-  try{newId=await doSave();}catch(e1){await new Promise(r=>setTimeout(r,2000));try{newId=await doSave();}catch(e2){log("✗ Không thể lưu view — anh thử bấm Save View lại sau vài giây.","err");return;}}
-  _currentViewId=String(newId);
-  _ledgerViewId=_currentViewId;
-  saveLedger();
-  _colorLedger={};
-  _ledgerViewId=null;
-  renderColorLedger();
-  try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e3){}
-  log('✓ View: "'+name+'" — đã lưu màu cho view này. Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");}catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+  try{
+    var api=await getAPI();
+    var inp=document.getElementById("viewName");
+    var name=inp?inp.value.trim():"";
+    if(!name){
+      var n=new Date();
+      name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());
+      if(inp)inp.value=name;
+    }
+    var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});
+    if(!c||!c.id)throw new Error("No view ID.");
+    await api.view.updateView({id:c.id});
+    await api.view.selectView(c.id);
+
+    // Lưu colorLedger vào view mới
+    _currentViewId=String(c.id);
+    _ledgerViewId=_currentViewId;
+    saveLedger();
+
+    // Lưu state vào localStorage
+    var state={
+      name:name,
+      color1:_color1,
+      color2:_color2,
+      color3:_color3,
+      guids1:_guids1||[],
+      guids2:_guids2||[],
+      note1:document.getElementById("noteInput1").value||"",
+      note2:document.getElementById("noteInput2").value||"",
+      note3:(document.getElementById("noteInput")||{}).value||"",
+      selMapSerialized:_selMap?Array.from(_selMap.entries()).map(function(e){return{modelId:e[0],ids:e[1]};}):[]
+    };
+    localStorage.setItem("mcc_view_"+c.id,JSON.stringify(state));
+
+    // Cập nhật danh sách view
+    var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
+    viewList.unshift({id:c.id,name:name,ts:Date.now()});
+    viewList=viewList.slice(0,20);
+    localStorage.setItem("mcc_view_list",JSON.stringify(viewList));
+
+    // Reset canvas + bảng kê sau khi lưu
+    _colorLedger={};
+    _ledgerViewId=null;
+    renderColorLedger();
+    try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e3){}
+
+    log('✓ View đã lưu: "'+name+'" — Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");
+    renderViewList();
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+}
+
+async function loadView(viewId){
+  var raw=localStorage.getItem("mcc_view_"+viewId);
+  if(!raw){log("✗ Không tìm thấy dữ liệu view này.","warn");return;}
+  var state;
+  try{state=JSON.parse(raw);}catch(e){log("✗ Dữ liệu view bị lỗi.","err");return;}
+
+  log('Đang load view "'+state.name+'"...',"info");
+
+  // Khôi phục màu
+  if(state.color1)setColor(1,state.color1);
+  if(state.color2)setColor(2,state.color2);
+  if(state.color3)setColor(3,state.color3);
+
+  // Khôi phục ghi chú
+  var noteIds={1:"noteInput1",2:"noteInput2",3:"noteInput"};
+  [1,2,3].forEach(function(n){
+    var el=document.getElementById(noteIds[n]);
+    if(el&&state["note"+n]!=null)el.value=state["note"+n];
+  });
+
+  // Chuyển viewer sang view đó
+  try{
+    var api=await getAPI();
+    await api.view.selectView(viewId);
+  }catch(e){log("⚠ Không chuyển được view trên viewer: "+(e&&e.message?e.message:String(e)),"warn");}
+
+  // Khôi phục guids và tô màu lại
+  if(state.guids1&&state.guids1.length){
+    _guids1=state.guids1;
+    checkApplyBtn(1);
+    log("Tô lại màu Slot 1 ("+state.guids1.length+" GUID)...","info");
+    await paintSlot(1);
+  }
+  if(state.guids2&&state.guids2.length){
+    _guids2=state.guids2;
+    checkApplyBtn(2);
+    log("Tô lại màu Slot 2 ("+state.guids2.length+" GUID)...","info");
+    await paintSlot(2);
+  }
+  if(state.selMapSerialized&&state.selMapSerialized.length){
+    _selMap=new Map();
+    state.selMapSerialized.forEach(function(e){_selMap.set(e.modelId,e.ids);});
+    var total=0;state.selMapSerialized.forEach(function(e){total+=e.ids.length;});
+    document.getElementById("selInfo").textContent="Đã chọn: "+fmtN(total)+" cấu kiện";
+    document.getElementById("paintSelBtn").disabled=false;
+    log("Tô lại màu Slot 3 ("+total+" cấu kiện)...","info");
+    await paintSelection();
+  }
+
+  log('✓ Load view "'+state.name+'" hoàn tất.',"ok");
+}
+
+function renderViewList(){
+  var container=document.getElementById("viewListContainer");
+  if(!container)return;
+  var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
+  if(!viewList.length){
+    container.innerHTML='<div class="text-[10.5px] text-slate-400 italic">Chưa có view nào được lưu.</div>';
+    return;
+  }
+  container.innerHTML=viewList.map(function(v){
+    var d=new Date(v.ts);
+    var ts=d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes());
+    return '<div class="flex items-center gap-1.5 py-1 border-b border-slate-100 last:border-0">'
+      +'<button onclick="loadView(\''+v.id+'\')" class="flex-1 text-left text-[10.5px] font-mono text-blue-600 hover:underline truncate" title="'+escapeHtml(v.name)+'">📂 '+escapeHtml(v.name)+'</button>'
+      +'<span class="text-[9px] text-slate-400 whitespace-nowrap">'+ts+'</span>'
+      +'<button onclick="deleteViewRecord(\''+v.id+'\')" class="text-[10px] text-slate-300 hover:text-red-400 ml-1" title="Xoá">✕</button>'
+      +'</div>';
+  }).join("");
+}
+
+function deleteViewRecord(viewId){
+  localStorage.removeItem("mcc_view_"+viewId);
+  var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
+  viewList=viewList.filter(function(v){return v.id!==viewId;});
+  localStorage.setItem("mcc_view_list",JSON.stringify(viewList));
+  log("✓ Đã xoá view khỏi danh sách.","ok");
+  renderViewList();
 }
 
 /* ═══ File Events ═══ */
@@ -710,3 +825,4 @@ document.getElementById("exportLedgerBtn").addEventListener("click",exportLedger
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
 document.getElementById("qtyBtn3").addEventListener("click",async function(){await captureSelection();if(_selMap)showQty(3,_selMap);});
+renderViewList();
