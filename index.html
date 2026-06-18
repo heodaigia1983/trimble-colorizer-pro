@@ -126,6 +126,22 @@
       box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
     }
     ::placeholder { color: #9aa0a6; }
+
+    /* Editable note input inside color ledger table */
+    .ledger-note-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 10.5px;
+      font-family: inherit;
+      color: #1a1c1e;
+      padding: 0;
+      cursor: text;
+    }
+    .ledger-note-input:focus {
+      border-bottom: 1px solid #1a73e8;
+    }
   </style>
 </head>
 <body class="text-[#1a1c1e] font-sans text-[12.5px] p-[13px] min-h-screen bg-[#f7f8fa]">
@@ -312,17 +328,17 @@
       </div>
     </div>
 
+    <input type="text" id="noteInput" placeholder="Ghi chú (vd: Đã gia công, Đã ban hành...)"
+           class="w-full mb-2 px-2.5 py-2 font-sans text-[11px] rounded-lg transition-all duration-200"
+           style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
     <div class="flex gap-1.5 mb-2.5">
       <button id="captureSelBtn" type="button"
               class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
-              style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e">📍 Chọn</button>
+              style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e">📍 Apply</button>
       <button id="paintSelBtn" type="button" disabled
               class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
-              style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">🖌 Đổi màu</button>
+              style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">✅ OK</button>
     </div>
-    <input type="text" id="noteInput" placeholder="Ghi chú (vd: Đã gia công, Đã ban hành...)"
-           class="w-full mt-1.5 px-2.5 py-2 font-sans text-[11px] rounded-lg transition-all duration-200"
-           style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
     <div class="text-[10.5px] font-mono mt-1" style="color:#5f6368" id="selInfo">Chưa chọn gì — click cấu kiện trên viewer rồi bấm "Lấy lựa chọn"</div>
     <button id="qtyBtn3" type="button"
             class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"

@@ -589,7 +589,7 @@ function renderColorLedger(){
       +'<span style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+escapeHtml(hex)+'</span>'
       +'</div></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+e.kl.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;font-size:10.5px;color:#1a1c1e">'+escapeHtml(e.note)+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-hex="'+hex+'" value="'+escapeHtml(e.note)+'" placeholder="Ghi chú..." onblur="if(_colorLedger[this.dataset.hex])_colorLedger[this.dataset.hex].note=this.value.trim()" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
   });
   html+='</tbody></table>';
