@@ -584,10 +584,7 @@ function renderColorLedger(){
     html+='<tr style="background:'+bg+'">'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;font-size:10.5px;color:#1a1c1e">'+(idx+1)+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea">'
-      +'<div style="display:flex;align-items:center;gap:6px">'
-      +'<div style="width:16px;height:16px;border-radius:3px;background:'+hex+';flex-shrink:0;border:1px solid rgba(0,0,0,0.12)"></div>'
-      +'<span style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+escapeHtml(hex)+'</span>'
-      +'</div></td>'
+      +'<div style="width:16px;height:16px;border-radius:3px;background:'+hex+';border:1px solid rgba(0,0,0,0.12)"></div></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+e.kl.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-hex="'+hex+'" value="'+escapeHtml(e.note)+'" placeholder="Ghi chú..." onblur="if(_colorLedger[this.dataset.hex])_colorLedger[this.dataset.hex].note=this.value.trim()" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
