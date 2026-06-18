@@ -29,6 +29,7 @@ var _colorLedger = {};
 var _currentViewId = null;
 var _ledgerViewId = null;
 var _viewPollInterval = null;
+var _loadingView = false;
 
 /* ═══ UI ═══ */
 /* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
@@ -193,6 +194,7 @@ async function initActiveView(api){
     _viewPollInterval=setInterval(async function(){
       try{
         if(!_api)return;
+        if(_loadingView)return;
         var view=await _api.viewer.getActiveView();
         var id=view&&(view.id||view.name);
         if(id&&String(id)!==_currentViewId){_currentViewId=String(id);loadLedger(_currentViewId);}
@@ -718,6 +720,14 @@ async function loadView(viewId){
 
   log('Đang load view "'+state.name+'"...',"info");
 
+  // Khoá poll active-view trong lúc load để repaintLedger không tô đè/nạp ledger cũ,
+  // rồi rebuild _colorLedger từ đúng màu thực tế sắp tô (1 nguồn duy nhất, tránh cộng KL trùng)
+  _loadingView=true;
+  _currentViewId=String(viewId);
+  _ledgerViewId=String(viewId);
+  _colorLedger={};
+  renderColorLedger();
+
   // Khôi phục màu
   if(state.color1)setColor(1,state.color1);
   if(state.color2)setColor(2,state.color2);
@@ -761,6 +771,10 @@ async function loadView(viewId){
     await paintSelection();
   }
 
+  // Ledger giờ đã khớp đúng màu thực tế trên viewer → lưu lại & mở poll trở lại
+  _loadingView=false;
+  renderColorLedger();
+  saveLedger();
   log('✓ Load view "'+state.name+'" hoàn tất.',"ok");
 }
 
