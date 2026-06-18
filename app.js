@@ -30,6 +30,7 @@ var _currentViewId = null;
 var _ledgerViewId = null;
 var _viewPollInterval = null;
 var _loadingView = false;
+var _lastQty = {};
 
 /* ═══ UI ═══ */
 /* Pattern → câu giải thích thân thiện (chỉ áp dụng cho hiển thị #log, console.log vẫn giữ message gốc) */
@@ -316,7 +317,9 @@ async function paintSlot(slot){
 var BATCH_PROP = 200;
 var QTY_PATTERNS = {
   weight: /NetWeight|GrossWeight|^Weight$/i,
-  length: /^Length$/i
+  length: /^Length$/i,
+  profile: /^PROFILE$|profile|member.*size|section/i,
+  area: /NetArea|GrossArea|^Area$/i
 };
 var ASSEMBLY_TIERS = [
   /^ASSEMBLY_POS$/i,
@@ -339,7 +342,7 @@ async function fetchQuantities(api, map){
       catch(e){ miss+=chunk.length; continue; }
       if(!Array.isArray(props)){ miss+=chunk.length; continue; }
       props.forEach(function(op){
-        var weight=null, length=null, found=false;
+        var weight=null, length=null, profile=null, area=null, found=false;
         var assemblyTierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
         if(Array.isArray(op.properties)){
           op.properties.forEach(function(ps){
@@ -350,10 +353,14 @@ async function fetchQuantities(api, map){
                   assemblyTierVals[t]=String(p.value).trim();
                 }
               }
+              if(profile==null && QTY_PATTERNS.profile.test(p.name) && p.value!=null && String(p.value).trim()!==""){
+                profile=String(p.value).trim();
+              }
               var v=parseFloat(p.value);
               if(isNaN(v))return;
               if(weight==null && QTY_PATTERNS.weight.test(p.name)){weight=v;found=true;}
               if(length==null && QTY_PATTERNS.length.test(p.name)){length=v;found=true;}
+              if(QTY_PATTERNS.area.test(p.name)){area=(area||0)+v;}
             });
           });
         }
@@ -361,10 +368,12 @@ async function fetchQuantities(api, map){
         if(found)hit++; else miss++;
         var key=assembly||"Không xác định";
         var g=groups.get(key);
-        if(!g){g={count:0,length:null,weight:0};groups.set(key,g);}
+        if(!g){g={count:0,length:null,weight:0,profile:null,area:null};groups.set(key,g);}
         g.count+=1;
         if(g.length==null && length!=null)g.length=length;
         if(weight!=null)g.weight+=weight;
+        if(g.profile==null && profile!=null)g.profile=profile;
+        if(area!=null)g.area=(g.area||0)+area;
       });
     }
   }
@@ -386,6 +395,7 @@ async function showQty(slot, map){
     map.forEach(function(ids,mid){sel.push({modelId:mid,objectRuntimeIds:ids});total+=ids.length;});
     await api.viewer.setSelection({modelObjectIds:sel}, "set");
     var q=await fetchQuantities(api, map);
+    _lastQty[slot]=q;
     if(!q.groups.size){
       resEl.innerHTML='<div class="text-[11px] font-mono text-slate-400">Model này không có dữ liệu Qto/Assembly để đọc.</div>';
     } else {
@@ -414,7 +424,8 @@ async function showQty(slot, map){
         +'<td class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#1a73e8;font-weight:700">—</td>'
         +'<td class="text-right py-1.5 px-2" style="border:1px solid #d0d3d8;color:#1a73e8;font-weight:700">'+(totalWeight/1000).toLocaleString(undefined,{maximumFractionDigits:3})+'</td>'
         +'</tr></tfoot></table>'
-        +'<div class="text-[10px] text-slate-500 mt-1">'+q.hit+' object có dữ liệu, '+q.miss+' object không có.</div>';
+        +'<div class="text-[10px] text-slate-500 mt-1">'+q.hit+' object có dữ liệu, '+q.miss+' object không có.</div>'
+        +'<button onclick="exportMTO('+slot+')" class="w-full mt-2 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95" style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">⬇ Xuất khối lượng (MTO)</button>';
       resEl.innerHTML=html;
     }
     if(noteEl){noteEl.classList.remove("hidden");var saved=localStorage.getItem("mcc_note_slot"+slot);if(saved!=null)noteEl.value=saved;}
@@ -659,6 +670,45 @@ function exportLedger(){
   log("✓ Xuất bảng kê thành công.","ok");
 }
 
+function round2(n){return Math.round(n*100)/100;}
+
+function exportMTO(slot){
+  var data=_lastQty&&_lastQty[slot];
+  if(!data||!data.groups||!data.groups.size){log("✗ Chưa có dữ liệu khối lượng (bấm Xem khối lượng trước).","warn");return;}
+  var now=new Date();
+  var dt=pad2(now.getDate())+"."+pad2(now.getMonth()+1)+"."+now.getFullYear()+" / "+pad2(now.getHours())+":"+pad2(now.getMinutes())+":"+pad2(now.getSeconds());
+  var aoa=[];
+  aoa.push(["ASSEMBLY LIST (MTO)"]);
+  aoa.push(["Project number:","","DDC-0033"]);
+  aoa.push(["Project name:","","PHU QUOC INTERNATIONAL AIRPORT"]);
+  aoa.push(["Builder:","",""]);
+  aoa.push(["Object:","",""]);
+  aoa.push(["Rev.:"]);
+  aoa.push(["Date/time of issue","",dt]);
+  aoa.push([]);
+  aoa.push(["NO.","Drawing No.","MEMBER SIZE","QTY","LENGTH","Area(m2)","T/Area(m2)","Weight(kg)","T/Weight(kg)","GRID LOCATION","FIRE PROOFED"]);
+  var rows=Array.from(data.groups.entries()).sort(function(a,b){return String(a[0]).localeCompare(String(b[0]));});
+  var no=0,totalWeight=0;
+  rows.forEach(function(r){
+    var name=r[0],g=r[1];
+    no++;
+    var qty=g.count||0;
+    var wTot=g.weight||0;
+    var wPer=qty?wTot/qty:wTot;
+    var aTot=(g.area!=null)?g.area:null;
+    var aPer=(aTot!=null&&qty)?aTot/qty:aTot;
+    totalWeight+=wTot;
+    aoa.push([no,name,g.profile||"",qty,g.length!=null?round2(g.length):"",aPer!=null?round2(aPer):"",aTot!=null?round2(aTot):"",round2(wPer),round2(wTot),"",""]);
+  });
+  aoa.push(["","","","","","","","Total",round2(totalWeight),"",""]);
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"MTO");
+  var fn="MTO_"+now.getFullYear()+pad2(now.getMonth()+1)+pad2(now.getDate())+"_"+pad2(now.getHours())+pad2(now.getMinutes())+".xlsx";
+  XLSX.writeFile(wb,fn);
+  log('✓ Đã xuất "'+fn+'".',"ok");
+}
+
 /* ═══ Save View ═══ */
 async function saveView(){
   try{
@@ -720,13 +770,17 @@ async function loadView(viewId){
 
   log('Đang load view "'+state.name+'"...',"info");
 
+  // Reset sạch màu viewer và ledger trước khi tô view mới (tránh màu cộng dồn từ view trước)
+  try{var api=await getAPI();await api.viewer.setObjectState(undefined,{color:"reset"});}catch(e){}
+  await sleep(300);
+  _colorLedger={};
+  renderColorLedger();
+
   // Khoá poll active-view trong lúc load để repaintLedger không tô đè/nạp ledger cũ,
   // rồi rebuild _colorLedger từ đúng màu thực tế sắp tô (1 nguồn duy nhất, tránh cộng KL trùng)
   _loadingView=true;
   _currentViewId=String(viewId);
   _ledgerViewId=String(viewId);
-  _colorLedger={};
-  renderColorLedger();
 
   // Khôi phục màu
   if(state.color1)setColor(1,state.color1);
@@ -837,7 +891,6 @@ document.getElementById("captureSelBtn").addEventListener("click",captureSelecti
 document.getElementById("paintSelBtn").addEventListener("click",paintSelection);
 document.getElementById("noteInput1").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot1",this.value);addNoteMarkup(1);});
 document.getElementById("noteInput2").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot2",this.value);addNoteMarkup(2);});
-document.getElementById("exportLedgerBtn").addEventListener("click",exportLedger);
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
 document.getElementById("qtyBtn3").addEventListener("click",async function(){await captureSelection();if(_selMap)showQty(3,_selMap);});
