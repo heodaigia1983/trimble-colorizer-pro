@@ -339,20 +339,22 @@ async function initActiveView(api){
 /* ═══ API ═══ */
 async function getAPI(){if(_api)return _api;_api=await TrimbleConnectWorkspace.connect(window.parent,function(e,d){console.log("[T]",e,d);});log("Đã kết nối Trimble API.","ok");initActiveView(_api);return _api;}
 
-/* ═══ Excel ═══ */
-function readWB(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(e){try{ok(XLSX.read(e.target.result,{type:"array"}));}catch(err){no(err);}};r.onerror=no;r.readAsArrayBuffer(f);});}
-function extractGuids(wb,label){
-  if(!wb||!wb.SheetNames||!wb.SheetNames.length)throw new Error("Không có sheet.");
-  var sn=wb.SheetNames[0];
-  var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{defval:""});
-  if(!rows.length)throw new Error("Sheet trống.");
-  var keys=Object.keys(rows[0]);
-  var gk=keys.find(function(k){return k.trim().toUpperCase()==="GUID";});
-  if(!gk){gk=keys[0];log('  ⚠ Dùng cột đầu: "'+gk+'"',"warn");}
-  var seen={},out=[];
-  rows.forEach(function(r){var g=String(r[gk]||"").trim();if(g&&!seen[g]){seen[g]=true;out.push(g);}});
-  log('  ['+label+'] "'+sn+'": '+out.length+' GUID',"info");
-  return out;
+/* ═══ SPM (.xsr) input ═══ */
+function readText(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(e){ok(String(e.target.result||""));};r.onerror=no;r.readAsText(f);});}
+function parseSPM(text){
+  var lines=String(text||"").split(/\r?\n/);
+  if(lines.length)lines.shift();                 // bỏ dòng đầu (header "SPM2019: N")
+  var set=new Set();
+  lines.forEach(function(line){
+    if(!line)return;
+    var cols=line.trim().split(/\s+/);            // fixed-width → tách theo khoảng trắng liên tiếp
+    if(cols[0]!=="ASS")return;                    // chỉ xử lý dòng loại ASS, bỏ qua PART
+    // TODO: xác nhận cột GUID sau khi có kết quả snippet match
+    //       (mặc định cols[1] = assembly GUID gốc Tekla; có thể đổi sang cols[2] = part GUID)
+    var guid=cols[1];
+    if(guid)set.add(guid);                         // dedupe bằng Set
+  });
+  return Array.from(set);
 }
 
 /* ═══ Model ═══ */
@@ -1196,8 +1198,8 @@ async function handleFile(inputEl,fnameId,slot,setGuids){
   setBadge(slot,"pending");
   log('Đọc [File#'+slot+'] "'+f.name+'"...',"info");
   try{
-    var wb=await readWB(f);
-    var guids=extractGuids(wb,"File#"+slot);
+    var text=await readText(f);
+    var guids=parseSPM(text);
     setGuids(guids);
     checkApplyBtn(slot);
     setBadge(slot,"ready");
