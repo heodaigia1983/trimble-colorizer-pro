@@ -287,34 +287,12 @@ function deserializeColorLedger(raw){
   }
   return map;
 }
-/* Storage nén (LZ-string) cho payload view lớn — tránh vượt quota localStorage.
-   Ghi kèm prefix "LZ1:" để nhận biết; dữ liệu cũ chưa nén vẫn đọc được bình thường. */
-function lsSetCompressed(key,obj){
-  var json=JSON.stringify(obj);
-  var data=(window.LZString&&LZString.compressToUTF16)?("LZ1:"+LZString.compressToUTF16(json)):json;
-  try{
-    localStorage.setItem(key,data);
-  }catch(e){
-    if(e&&(e.name==="QuotaExceededError"||e.name==="NS_ERROR_DOM_QUOTA_REACHED"||e.code===22||e.code===1014)){
-      var q=new Error("QUOTA_EXCEEDED");q.quota=true;throw q;
-    }
-    throw e;
-  }
-}
-function lsGetDecompressed(key){
-  var raw=localStorage.getItem(key);
-  if(raw==null)return null;
-  if(raw.slice(0,4)==="LZ1:"){
-    if(window.LZString&&LZString.decompressFromUTF16){try{return LZString.decompressFromUTF16(raw.slice(4));}catch(e){return null;}}
-    return null;
-  }
-  return raw; // dữ liệu cũ chưa nén
-}
 function getLedgerKey(){return _ledgerViewId?"colorstudio_"+_ledgerViewId:null;}
-function saveLedger(){var key=getLedgerKey();if(!key)return;try{lsSetCompressed(key,serializeColorLedger());}catch(e){}}
+function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(serializeColorLedger()));}catch(e){}}
 async function loadLedger(viewId){
   _ledgerViewId=viewId;
-  try{var raw=lsGetDecompressed("colorstudio_"+viewId);_colorLedger=raw?deserializeColorLedger(raw):new Map();}catch(e){_colorLedger=new Map();}
+  try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?deserializeColorLedger(raw):new Map();}catch(e){_colorLedger=new Map();}
+  await rebuildColorLedgerSummary();
   await renderColorLedger();
   await repaintLedger();
 }
@@ -660,6 +638,7 @@ async function paintSelection(){
     }
     log("✓ Đã tô "+fmtN(done)+" cấu kiện.","ok");
     document.getElementById("qtyBtn3").disabled=false;
+    await rebuildColorLedgerSummary();
     await renderColorLedger();
     saveLedger();
   }catch(e){
@@ -767,6 +746,7 @@ async function renderColorLedger(){
   if(!el)return;
   var groups=buildColorGroups();
   if(!groups.size){el.classList.add("hidden");if(expBtn)expBtn.classList.add("hidden");return;}
+  await rebuildColorLedgerSummary();
   var colors=Array.from(groups.keys()).sort();
   var html='<table style="width:100%;border-collapse:collapse">'
     +'<thead><tr style="background:#f0f2f5;position:sticky;top:0;z-index:2">'
@@ -780,7 +760,7 @@ async function renderColorLedger(){
     var info=groups.get(color);
     var summary=_colorLedgerSummary&&_colorLedgerSummary.get(color);
     var count=info?Array.from(info.ids.values()).reduce(function(acc,ids){return acc+(Array.isArray(ids)?ids.length:0);},0):0;
-    var weightTxt=summary?(summary.weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'…';
+    var weight=summary?summary.weight:0;
     var note=summary?summary.note:(info?info.note||"":"");
     var bg=idx%2===0?"#ffffff":"#f7f8fa";
     html+='<tr style="background:'+bg+'">'
@@ -788,7 +768,7 @@ async function renderColorLedger(){
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea">'
       +'<div style="width:16px;height:16px;border-radius:3px;background:'+color+';border:1px solid rgba(0,0,0,0.12)"></div></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+fmtN(count)+'</td>'
-      +'<td class="ledger-weight" data-color="'+color+'" style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+weightTxt+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-color="'+color+'" value="'+escapeHtml(note)+'" placeholder="Ghi chú..." onblur="updateColorNoteForColor(this.dataset.color,this.value.trim())" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
   });
@@ -796,21 +776,6 @@ async function renderColorLedger(){
   el.innerHTML=html;
   el.classList.remove("hidden");
   if(expBtn)expBtn.classList.remove("hidden");
-  // BUG 2: tính KL nền (per-object getObjectProperties rất chậm với model lớn) rồi
-  // cập nhật vào panel — KHÔNG chặn việc panel hiện ngay ở trên.
-  updateLedgerWeights();
-}
-
-/* BUG 2: tính khối lượng nền & cập nhật riêng cột KL, không dựng lại bảng (giữ ô ghi chú đang nhập) */
-async function updateLedgerWeights(){
-  await rebuildColorLedgerSummary();
-  var el=document.getElementById("colorLedger");
-  if(!el||!_colorLedgerSummary)return;
-  var cells=el.querySelectorAll(".ledger-weight");
-  cells.forEach(function(td){
-    var summary=_colorLedgerSummary.get(td.dataset.color);
-    if(summary)td.textContent=(summary.weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3});
-  });
 }
 
 async function exportLedger(){
@@ -831,12 +796,8 @@ async function exportLedger(){
   var wb2=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb2,ws,"Bang ke");
   var d=new Date();
-  try{
-    XLSX.writeFile(wb2,"bang-ke-"+d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+".xlsx");
-    log("✓ Xuất bảng kê thành công.","ok");
-  }catch(e){
-    log("✗ Lỗi xuất bảng kê: "+(e&&e.message?e.message:String(e)),"err");
-  }
+  XLSX.writeFile(wb2,"bang-ke-"+d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+".xlsx");
+  log("✓ Xuất bảng kê thành công.","ok");
 }
 
 function round2(n){return Math.round(n*100)/100;}
@@ -882,12 +843,8 @@ async function exportMTO(slot){
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"MTO");
   var fn="MTO_"+now.getFullYear()+pad2(now.getMonth()+1)+pad2(now.getDate())+"_"+pad2(now.getHours())+pad2(now.getMinutes())+".xlsx";
-  try{
-    XLSX.writeFile(wb,fn);
-    log('✓ Đã xuất "'+fn+'".',"ok");
-  }catch(e){
-    log("✗ Lỗi xuất file: "+(e&&e.message?e.message:String(e)),"err");
-  }
+  XLSX.writeFile(wb,fn);
+  log('✓ Đã xuất "'+fn+'".',"ok");
 }
 
 /* ═══ Save View ═══ */
@@ -906,19 +863,12 @@ async function saveView(){
     await api.view.updateView({id:c.id});
     await api.view.selectView(c.id);
 
-    // Lưu colorLedger vào view mới (ghi dưới key colorstudio_<id> qua saveLedger)
+    // Lưu colorLedger vào view mới
     _currentViewId=String(c.id);
     _ledgerViewId=_currentViewId;
     saveLedger();
 
-    // BUG 1: Đăng ký view vào danh sách TRƯỚC, độc lập với lần ghi state cồng kềnh
-    // → view luôn xuất hiện trong Saved Views kể cả khi ghi state lỗi/vượt quota.
-    var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
-    viewList.unshift({id:c.id,name:name,ts:Date.now()});
-    viewList=viewList.slice(0,20);
-    localStorage.setItem("mcc_view_list",JSON.stringify(viewList));
-
-    // Lưu state vào localStorage (BUG 1: KHÔNG kèm colorLedger — đã ghi dưới key colorstudio_<id> ở trên → giảm ~½ payload)
+    // Lưu state vào localStorage
     var state={
       name:name,
       color1:_color1,
@@ -929,18 +879,16 @@ async function saveView(){
       note1:document.getElementById("noteInput1").value||"",
       note2:document.getElementById("noteInput2").value||"",
       note3:(document.getElementById("noteInput")||{}).value||"",
-      selMapSerialized:_selMap?Array.from(_selMap.entries()).map(function(e){return{modelId:e[0],ids:e[1]};}):[]
+      selMapSerialized:_selMap?Array.from(_selMap.entries()).map(function(e){return{modelId:e[0],ids:e[1]};}):[],
+      colorLedger:serializeColorLedger()
     };
-    // BUG 1: ghi state cồng kềnh trong try/catch riêng — lỗi quota KHÔNG được chặn việc view đã vào danh sách.
-    try{
-      lsSetCompressed("mcc_view_"+c.id,state);
-    }catch(eState){
-      if(eState&&eState.quota){
-        log('⚠ View "'+name+'" đã lưu nhưng không kèm dữ liệu khôi phục (GUID/lựa chọn) vì model quá lớn, vượt giới hạn bộ nhớ trình duyệt. Màu vẫn được lưu trong bảng kê của view này.',"warn");
-      }else{
-        throw eState;
-      }
-    }
+    localStorage.setItem("mcc_view_"+c.id,JSON.stringify(state));
+
+    // Cập nhật danh sách view
+    var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
+    viewList.unshift({id:c.id,name:name,ts:Date.now()});
+    viewList=viewList.slice(0,20);
+    localStorage.setItem("mcc_view_list",JSON.stringify(viewList));
 
     // Reset canvas + bảng kê sau khi lưu
     _colorLedger=new Map();
@@ -951,17 +899,11 @@ async function saveView(){
 
     log('✓ View đã lưu: "'+name+'" — Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");
     renderViewList();
-  }catch(e){
-    if(e&&e.quota){
-      log("✗ Không lưu được view: dữ liệu quá lớn, vượt giới hạn bộ nhớ trình duyệt (localStorage). Model này có quá nhiều cấu kiện đã tô. Hãy xoá bớt view cũ trong danh sách Saved Views rồi thử lại.","err");
-    }else{
-      log("✗ "+(e&&e.message?e.message:String(e)),"err");
-    }
-  }
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
 
 async function loadView(viewId){
-  var raw=lsGetDecompressed("mcc_view_"+viewId);
+  var raw=localStorage.getItem("mcc_view_"+viewId);
   if(!raw){log("✗ Không tìm thấy dữ liệu view này.","warn");return;}
   var state;
   try{state=JSON.parse(raw);}catch(e){log("✗ Dữ liệu view bị lỗi.","err");return;}
@@ -1014,13 +956,10 @@ async function loadView(viewId){
     log("Tô lại màu Slot 2 ("+state.guids2.length+" GUID)...","info");
     await paintSlot(2);
   }
-  // BUG 1: ledger giờ lưu dưới key colorstudio_<viewId>. Đọc từ đó;
-  // fallback state.colorLedger để view CŨ (lưu trước khi sửa) vẫn hiện đúng màu.
-  var ledgerRaw=lsGetDecompressed("colorstudio_"+viewId);
-  var ledgerMap=ledgerRaw?deserializeColorLedger(ledgerRaw):(state.colorLedger&&Array.isArray(state.colorLedger)?deserializeColorLedger(state.colorLedger):null);
-  if(ledgerMap&&ledgerMap.size){
-    _colorLedger=ledgerMap;
+  if(state.colorLedger&&Array.isArray(state.colorLedger)){
+    _colorLedger=deserializeColorLedger(state.colorLedger);
     await repaintLedger();
+    await rebuildColorLedgerSummary();
     await renderColorLedger();
   }
   if(state.selMapSerialized&&state.selMapSerialized.length){
