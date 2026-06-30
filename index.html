@@ -142,6 +142,12 @@
     .ledger-note-input:focus {
       border-bottom: 1px solid #1a73e8;
     }
+
+    /* Option 4 — assembly prefix list */
+    .ap-row:hover { background: #faf5ff; }
+    #apList::-webkit-scrollbar { width: 4px; }
+    #apList::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 4px; }
+    #apList::-webkit-scrollbar-track { background: transparent; }
   </style>
 </head>
 <body class="text-[#1a1c1e] font-sans text-[12.5px] p-[13px] min-h-screen bg-[#f7f8fa]">
@@ -384,6 +390,54 @@
   </div>
 </div>
 
+<!-- SLOT 4: ASSEMBLY POSITION PREFIX FILTER -->
+<div class="card-slot accordion-item rounded-xl mb-2.5"
+     style="background:#ffffff;border:1px solid #e2e5ea;border-left:2px solid #9334e6;box-shadow:0 1px 3px rgba(0,0,0,0.07)"
+     id="slot4">
+
+  <!-- Accordion Header -->
+  <div class="accordion-header flex items-center justify-between px-3 py-2.5 cursor-pointer" onclick="toggleAccordion(this)">
+    <div class="flex items-center gap-2">
+      <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+           style="background:#f3e8fd;color:#9334e6" id="num4">4</div>
+      <div class="text-[11.5px] font-semibold">Lọc theo Assembly Position (Prefix)</div>
+    </div>
+    <svg class="chevron-icon w-4 h-4 flex-shrink-0" style="color:#9aa0a6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+    </svg>
+  </div>
+
+  <!-- Accordion Content -->
+  <div class="accordion-content hidden px-3 pb-3">
+    <div class="flex gap-1.5 mb-2">
+      <input type="text" id="apPrefix" placeholder="Nhập prefix, vd: CO, BR, RF, BE..."
+             class="flex-1 px-2.5 py-2 font-mono text-[11px] rounded-lg transition-all duration-200"
+             style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
+      <button id="apSearchBtn" type="button"
+              class="px-3 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed text-white whitespace-nowrap mobile:min-h-[44px]"
+              style="background:#9334e6;box-shadow:0 1px 3px rgba(147,52,230,0.3)">🔎 Tìm</button>
+    </div>
+
+    <!-- Progress bar (ẩn mặc định, chỉ hiện khi scan lần đầu) -->
+    <div class="h-[3px] rounded mb-2 overflow-hidden hidden" style="background:#e2e5ea" id="apProgWrap">
+      <div class="h-full w-0 rounded transition-[width] duration-300"
+           style="background:linear-gradient(90deg,#9334e6,#1a73e8)" id="apProgBar"></div>
+    </div>
+
+    <div class="flex items-center justify-between mb-1 gap-2">
+      <div class="text-[10px] truncate" style="color:#5f6368" id="apStatus"></div>
+      <div class="text-[10px] font-semibold whitespace-nowrap" style="color:#9334e6" id="apCount"></div>
+    </div>
+
+    <div id="apList" style="border:1px solid #e2e5ea;border-radius:8px;max-height:260px;overflow-y:auto"></div>
+
+    <button id="apClearBtn" type="button"
+            class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
+            style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e">✕ Bỏ chọn tất cả (xoá highlight)</button>
+    <div class="text-[10px] mt-1.5 leading-relaxed" style="color:#9aa0a6">Tô màu tạm thời — không lưu vào bảng kê / MTO. Click 1 hoặc nhiều dòng để highlight ngay trên viewer.</div>
+  </div>
+</div>
+
 <div class="h-px my-3 hidden" style="background:#e2e5ea"></div>
 
 <div class="h-[3px] rounded mb-3 overflow-hidden hidden" style="background:#e2e5ea" id="progWrap">
@@ -433,6 +487,6 @@
     if (content) content.classList.toggle('hidden', isActive);
   }
 </script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

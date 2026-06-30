@@ -33,6 +33,12 @@ var _viewPollInterval = null;
 var _loadingView = false;
 var _lastQty = {};
 
+/* ═══ Option 4 — Assembly Position Prefix Filter (highlight tạm, KHÔNG ledger) ═══ */
+var _apCache = null;          // Map<objectKey, {modelId, runtimeId, ap, name}>
+var _apScanning = false;
+var _apSelected = new Set();  // objectKeys đang highlight tạm thời
+var AP_HIGHLIGHT = "#9334e6";
+
 function makeObjectKey(modelId, runtimeId){
   return modelId+":"+runtimeId;
 }
@@ -576,6 +582,10 @@ async function resetViewer(){
   });
   document.getElementById("qtyBtn3").disabled=true;
   document.getElementById("qtyResult3").classList.add("hidden");
+  // Option 4: đồng bộ highlight tạm sau khi reset toàn bộ màu (giữ nguyên cache)
+  _apSelected.clear();
+  var apL=document.getElementById("apList");
+  if(apL){Array.prototype.forEach.call(apL.querySelectorAll(".ap-check"),function(cb){cb.checked=false;});}
   setProgress(100);log("✓ Reset OK.","ok");setTimeout(function(){setProgress(0);},1000);}
   catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");setProgress(0);}
   finally{lockUI(false);checkApplyBtn(1);checkApplyBtn(2);}
@@ -1005,6 +1015,179 @@ function deleteViewRecord(viewId){
   renderViewList();
 }
 
+/* ═══ Option 4 — Lọc theo Assembly Position (Prefix) ═══ */
+/* Đọc Assembly Position của 1 object (tái dùng ASSEMBLY_TIERS — KHÔNG đụng fetchQuantities) */
+function apExtractAssembly(op){
+  var tierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
+  if(op && Array.isArray(op.properties)){
+    op.properties.forEach(function(ps){
+      if(!Array.isArray(ps.properties))return;
+      ps.properties.forEach(function(p){
+        for(var t=0;t<ASSEMBLY_TIERS.length;t++){
+          if(tierVals[t]==null && ASSEMBLY_TIERS[t].test(p.name) && p.value!=null && String(p.value).trim()!==""){
+            tierVals[t]=String(p.value).trim();
+          }
+        }
+      });
+    });
+  }
+  return tierVals.find(function(v){return v!=null;})||null;
+}
+/* Tên hiển thị: ưu tiên op.name → property "Name" → IFC type/class */
+function apExtractName(op){
+  if(!op)return"";
+  if(op.name && String(op.name).trim())return String(op.name).trim();
+  if(Array.isArray(op.properties)){
+    var found=null;
+    op.properties.forEach(function(ps){
+      if(!Array.isArray(ps.properties))return;
+      ps.properties.forEach(function(p){
+        if(found==null && /^name$/i.test(p.name) && p.value!=null && String(p.value).trim()!==""){found=String(p.value).trim();}
+      });
+    });
+    if(found)return found;
+  }
+  if(op.type && String(op.type).trim())return String(op.type).trim();
+  if(op.class && String(op.class).trim())return String(op.class).trim();
+  return"";
+}
+function apSetProgress(p){
+  var w=document.getElementById("apProgWrap"),b=document.getElementById("apProgBar");
+  if(!w||!b)return;
+  if(p<=0){w.classList.add("hidden");b.style.width="0%";return;}
+  w.classList.remove("hidden");b.style.width=Math.min(p,100)+"%";
+}
+function apSetStatus(t){var e=document.getElementById("apStatus");if(e)e.textContent=t||"";}
+/* Quét TOÀN BỘ object 1 lần, build cache RAM (key giống _colorLedger) */
+async function apBuildCache(){
+  if(_apScanning)return;
+  _apScanning=true;
+  var btn=document.getElementById("apSearchBtn");
+  if(btn)btn.disabled=true;
+  apSetProgress(1);
+  apSetStatus("Đang quét toàn bộ model lần đầu...");
+  try{
+    var api=await getAPI();
+    var raw=null;
+    for(var a=1;a<=RETRY_MAX;a++){
+      try{raw=await api.viewer.getObjects();}catch(e){raw=null;}
+      if(Array.isArray(raw)&&raw.length)break;
+      if(a<RETRY_MAX)await sleep(RETRY_DELAY);
+    }
+    if(!Array.isArray(raw)||!raw.length)throw new Error("Viewer trống. Đợi model load.");
+    var models=[],total=0;
+    raw.forEach(function(g){
+      if(!g||!g.modelId)return;
+      var ids=flat(g.objects||g.objectRuntimeIds||g.ids);
+      if(!ids.length)return;
+      models.push({modelId:g.modelId,ids:ids});
+      total+=ids.length;
+    });
+    if(!total)throw new Error("Không thấy object nào trong model.");
+    var cache=new Map(),done=0;
+    for(var mi=0;mi<models.length;mi++){
+      var mid=models[mi].modelId,ids=models[mi].ids;
+      for(var i=0;i<ids.length;i+=BATCH_PROP){
+        var chunk=ids.slice(i,i+BATCH_PROP);
+        var props=null;
+        try{props=await api.viewer.getObjectProperties(mid,chunk);}catch(e){props=null;}
+        for(var j=0;j<chunk.length;j++){
+          var op=Array.isArray(props)?props[j]:null;
+          var rid=(op&&op.id!=null)?op.id:chunk[j];
+          var ap=apExtractAssembly(op);
+          var nm=apExtractName(op);
+          cache.set(makeObjectKey(mid,rid),{modelId:mid,runtimeId:rid,ap:ap||"",name:nm||""});
+        }
+        done+=chunk.length;
+        apSetProgress(total?Math.round(done/total*100):100);
+      }
+    }
+    _apCache=cache;
+    apSetStatus("Đã quét "+fmtN(cache.size)+" cấu kiện. Lọc tức thời từ giờ.");
+    log("✓ Option 4: cache "+fmtN(cache.size)+" cấu kiện.","ok");
+  }catch(e){
+    _apCache=null;
+    apSetStatus("✗ "+(e&&e.message?e.message:String(e)));
+    log("✗ Option 4: "+(e&&e.message?e.message:String(e)),"err");
+  }finally{
+    _apScanning=false;
+    if(btn)btn.disabled=false;
+    setTimeout(function(){apSetProgress(0);},800);
+  }
+}
+async function apSearch(){
+  if(_apScanning)return;
+  if(!_apCache){await apBuildCache();if(!_apCache)return;}
+  apFilter();
+}
+/* Lọc trong cache RAM — tức thời, không gọi lại getObjectProperties */
+function apFilter(){
+  var input=document.getElementById("apPrefix");
+  var prefix=input?input.value.replace(/^\s+|\s+$/g,""):"";
+  var countEl=document.getElementById("apCount");
+  if(!_apCache){apRenderResults([]);if(countEl)countEl.textContent="";return;}
+  if(!prefix){apRenderResults([]);if(countEl)countEl.textContent="";apSetStatus("Nhập prefix rồi bấm Tìm.");return;}
+  var matches=[];
+  _apCache.forEach(function(v,key){
+    if(v.ap && v.ap.indexOf(prefix)===0){matches.push({key:key,ap:v.ap,name:v.name});} // startsWith, phân biệt hoa thường
+  });
+  matches.sort(function(a,b){var x=a.ap.localeCompare(b.ap);return x!==0?x:String(a.name).localeCompare(String(b.name));});
+  if(countEl)countEl.textContent=fmtN(matches.length)+" kết quả";
+  apRenderResults(matches);
+}
+function apRenderResults(matches){
+  var listEl=document.getElementById("apList");
+  if(!listEl)return;
+  if(!matches.length){
+    listEl.innerHTML='<div class="text-[10.5px] text-slate-400 italic px-2 py-3">Không có cấu kiện khớp prefix (phân biệt hoa thường).</div>';
+    return;
+  }
+  listEl.innerHTML=matches.map(function(m){
+    var checked=_apSelected.has(m.key)?"checked":"";
+    return '<label class="ap-row flex items-center gap-2 px-2 py-1.5 cursor-pointer" style="border-bottom:1px solid #f0f2f5">'
+      +'<input type="checkbox" class="ap-check" data-key="'+escapeHtml(m.key)+'" '+checked+' style="width:14px;height:14px;flex-shrink:0;accent-color:#9334e6;cursor:pointer"/>'
+      +'<span class="font-mono text-[10.5px] font-semibold flex-shrink-0" style="color:#1a1c1e">'+escapeHtml(m.ap||"—")+'</span>'
+      +'<span class="text-[10px] truncate" style="color:#5f6368">'+escapeHtml(m.name||"")+'</span>'
+      +'</label>';
+  }).join("");
+  Array.prototype.forEach.call(listEl.querySelectorAll(".ap-check"),function(cb){
+    cb.addEventListener("change",function(){apToggle(this.dataset.key,this.checked);});
+  });
+}
+/* Highlight tạm thời 1 object — KHÔNG ghi _colorLedger, KHÔNG lưu, KHÔNG tính MTO */
+async function apToggle(key,isChecked){
+  var entry=_apCache&&_apCache.get(key);
+  if(!entry)return;
+  try{
+    var api=await getAPI();
+    if(isChecked){
+      _apSelected.add(key);
+      await api.viewer.setObjectState({modelObjectIds:[{modelId:entry.modelId,objectRuntimeIds:[Number(entry.runtimeId)]}]},{color:AP_HIGHLIGHT});
+    }else{
+      _apSelected.delete(key);
+      await api.viewer.setObjectState({modelObjectIds:[{modelId:entry.modelId,objectRuntimeIds:[Number(entry.runtimeId)]}]},{color:"reset"});
+    }
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+}
+/* Bỏ chọn tất cả → trả màu gốc model cho mọi object Option 4 đang highlight */
+async function apClearAll(){
+  var listEl=document.getElementById("apList");
+  if(listEl){Array.prototype.forEach.call(listEl.querySelectorAll(".ap-check"),function(cb){cb.checked=false;});}
+  if(!_apSelected.size)return;
+  var byModel=new Map();
+  _apSelected.forEach(function(key){
+    var o=splitObjectKey(key);
+    var arr=byModel.get(o.modelId);if(!arr){arr=[];byModel.set(o.modelId,arr);}
+    arr.push(Number(o.runtimeId));
+  });
+  _apSelected.clear();
+  try{
+    var api=await getAPI();
+    for(var entry of byModel){await paintBatch(api,entry[0],entry[1],{color:"reset"});}
+    log("✓ Option 4: đã xoá highlight tạm thời.","ok");
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+}
+
 /* ═══ File Events ═══ */
 async function handleFile(inputEl,fnameId,slot,setGuids){
   var f=inputEl.files&&inputEl.files[0];if(!f)return;
@@ -1039,4 +1222,10 @@ document.getElementById("noteInput2").addEventListener("blur",function(){localSt
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
 document.getElementById("qtyBtn3").addEventListener("click",async function(){await captureSelection();if(_selMap)showQty(3,_selMap);});
+/* Option 4 wiring */
+(function(){
+  var sb=document.getElementById("apSearchBtn");if(sb)sb.addEventListener("click",apSearch);
+  var pf=document.getElementById("apPrefix");if(pf)pf.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();apSearch();}});
+  var cb=document.getElementById("apClearBtn");if(cb)cb.addEventListener("click",apClearAll);
+})();
 renderViewList();
