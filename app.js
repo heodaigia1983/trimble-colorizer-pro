@@ -831,8 +831,12 @@ async function exportLedger(){
   var wb2=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb2,ws,"Bang ke");
   var d=new Date();
-  XLSX.writeFile(wb2,"bang-ke-"+d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+".xlsx");
-  log("✓ Xuất bảng kê thành công.","ok");
+  try{
+    XLSX.writeFile(wb2,"bang-ke-"+d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+".xlsx");
+    log("✓ Xuất bảng kê thành công.","ok");
+  }catch(e){
+    log("✗ Lỗi xuất bảng kê: "+(e&&e.message?e.message:String(e)),"err");
+  }
 }
 
 function round2(n){return Math.round(n*100)/100;}
@@ -878,8 +882,12 @@ async function exportMTO(slot){
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,"MTO");
   var fn="MTO_"+now.getFullYear()+pad2(now.getMonth()+1)+pad2(now.getDate())+"_"+pad2(now.getHours())+pad2(now.getMinutes())+".xlsx";
-  XLSX.writeFile(wb,fn);
-  log('✓ Đã xuất "'+fn+'".',"ok");
+  try{
+    XLSX.writeFile(wb,fn);
+    log('✓ Đã xuất "'+fn+'".',"ok");
+  }catch(e){
+    log("✗ Lỗi xuất file: "+(e&&e.message?e.message:String(e)),"err");
+  }
 }
 
 /* ═══ Save View ═══ */

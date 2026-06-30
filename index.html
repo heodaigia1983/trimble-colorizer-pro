@@ -1,439 +1,112 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Model Control Center</title>
-  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://unpkg.com/lz-string@1.5.0/libs/lz-string.min.js"></script>
-  <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter','sans-serif'],
-            mono: ['JetBrains Mono','monospace']
-          },
-          colors: {
-            accent: '#1a73e8',
-            midnight: { bg:'#f7f8fa', surface:'#ffffff', card:'#ffffff', border:'#e2e5ea' },
-            sys: { green:'#1e8e3e', blue:'#1a73e8', red:'#d93025', amber:'#f29900' }
-          },
-          screens: {
-            mobile: { max: '479px' },
-            tablet: '480px'
-          }
-        }
-      }
-    }
-  </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trimble IFC Viewer POC</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
-    /* Accordion */
-    .chevron-icon { transition: transform 0.2s ease; }
-    .accordion-item.active .chevron-icon { transform: rotate(180deg); }
-    .accordion-header { user-select: none; }
-    .accordion-header:hover { background: rgba(26,115,232,0.04); border-radius: 10px 10px 0 0; }
-
-    /* Card slot hover */
-    .card-slot {
-      transition: box-shadow 0.2s ease;
-    }
-    .card-slot:hover {
-      box-shadow: 0 2px 10px rgba(26,115,232,0.12), 0 1px 3px rgba(0,0,0,0.06);
+    :root {
+      color-scheme: dark;
+      font-family: Inter, system-ui, sans-serif;
+      background: #090b11;
+      color: #e8eef6;
     }
 
-    /* Log */
-    #log {
-      background: #f7f8fa;
-      border: 1px solid #e2e5ea;
-      border-radius: 9px;
-      padding: 10px 11px;
-      max-height: 130px;
-      overflow-y: auto;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 10.5px;
-      line-height: 1.65;
-      color: #3c4043;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    #log .ok   { color: #1e8e3e; font-weight: 500; }
-    #log .info { color: #1a73e8; }
-    #log .warn { color: #e37400; }
-    #log .err  { color: #d93025; font-weight: 500; }
-    #log::-webkit-scrollbar { width: 4px; }
-    #log::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 4px; }
-    #log::-webkit-scrollbar-track { background: transparent; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, rgba(58, 72, 122, 0.26), transparent 35%), linear-gradient(180deg, #08101f 0%, #06080f 100%); }
+    button { border: none; cursor: pointer; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .app-shell { display: grid; min-height: 100vh; grid-template-rows: auto 1fr; gap: 18px; padding: 18px; }
+    .topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-radius: 24px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(16px); }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: rgba(26,115,232,0.18); color: #7cc0ff; font-size: 1.3rem; }
+    .brand-title { display: grid; gap: 2px; }
+    .brand-title .name { font-size: 1rem; font-weight: 700; letter-spacing: -0.03em; }
+    .brand-title .subtitle { color: #9ab1ce; font-size: 0.82rem; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .toolbar button { padding: 12px 16px; border-radius: 14px; background: rgba(21,32,58,0.82); color: #f3f8ff; font-weight: 600; transition: transform 0.18s ease, background 0.18s ease; }
+    .toolbar button:hover:not(:disabled) { transform: translateY(-1px); background: rgba(33,56,101,0.96); }
+    .toolbar button.accent { background: linear-gradient(135deg, #5f95ff, #2ed5c8); color: #07121f; }
+    .toolbar button.accent:hover:not(:disabled) { filter: brightness(1.06); background: linear-gradient(135deg, #5f95ff, #2ed5c8); }
+    .status-badge { padding: 10px 14px; border-radius: 999px; background: rgba(255,255,255,0.06); color: #bfd7ff; font-size: 0.9rem; letter-spacing: 0.01em; }
 
-    /* Scrollable qty result containers */
-    #qtyResult1, #qtyResult2, #qtyResult3 {
-      max-height: 320px;
-      overflow-y: auto;
-      overflow-x: auto;
-      border: 1px solid #e2e5ea;
-      border-radius: 8px;
-    }
-    #qtyResult1::-webkit-scrollbar,
-    #qtyResult2::-webkit-scrollbar,
-    #qtyResult3::-webkit-scrollbar { width: 4px; height: 4px; }
-    #qtyResult1::-webkit-scrollbar-thumb,
-    #qtyResult2::-webkit-scrollbar-thumb,
-    #qtyResult3::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 4px; }
-    #qtyResult1::-webkit-scrollbar-track,
-    #qtyResult2::-webkit-scrollbar-track,
-    #qtyResult3::-webkit-scrollbar-track { background: transparent; }
+    .content { display: grid; grid-template-columns: 1.5fr 0.95fr; gap: 18px; align-items: stretch; }
+    .viewer-panel, .side-panel { border-radius: 28px; background: rgba(7, 12, 21, 0.88); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 30px 80px rgba(0,0,0,0.24); overflow: hidden; }
+    .viewer-panel { min-height: 640px; display: grid; position: relative; }
+    #viewerCanvas { width: 100%; height: 100%; display: block; background: #070b14; }
+    .viewer-overlay { position: absolute; inset: 0; display: none; place-items: center; color: #dce4f5; text-align: center; background: rgba(3,7,16,0.65); font-size: 1rem; font-weight: 600; backdrop-filter: blur(14px); }
+    .side-panel { display: grid; grid-template-rows: auto 1fr; gap: 18px; padding: 18px; }
+    .panel-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 24px; padding: 18px; display: grid; gap: 14px; }
+    .panel-card h2 { margin: 0; font-size: 1rem; letter-spacing: -0.03em; }
+    .panel-row { display: grid; gap: 8px; }
+    .panel-row label { color: #9ab1ce; font-size: 0.82rem; }
+    .panel-row .value { padding: 14px 16px; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: #eff6ff; font-size: 0.95rem; word-break: break-word; }
+    .panel-actions { display: grid; gap: 10px; }
+    .panel-actions button { width: 100%; padding: 14px 16px; border-radius: 16px; font-size: 0.95rem; color: #f5f9ff; background: rgba(43,72,139,0.95); }
+    .panel-actions button.secondary { background: rgba(255,255,255,0.05); color: #c3d3eb; }
+    .panel-actions button.accent { background: linear-gradient(135deg, #5f95ff, #2ed5c8); }
+    .panel-actions button:hover:not(:disabled) { filter: brightness(1.05); }
+    .info-block { display: grid; gap: 8px; }
+    .info-block strong { color: #dbe9ff; }
+    .note-sub { color: #6f86a8; font-size: 0.8rem; }
 
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: #f0f2f5;
-      color: #5f6368;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      padding: 7px 9px;
-      border-bottom: 2px solid #e2e5ea;
-      text-align: left;
-      white-space: nowrap;
-    }
-    th:not(:first-child) { text-align: right; }
-    td {
-      padding: 5px 9px;
-      border-bottom: 1px solid #f0f2f5;
-      font-size: 10.5px;
-      color: #1a1c1e;
-    }
-    td:not(:first-child) { text-align: right; font-family: 'JetBrains Mono', monospace; }
-    tr:nth-child(even) td { background: #f7f8fa; }
-    tr:hover td { background: #e8f0fe; }
+    /* Light theme — keeps the glass UI cohesive when the viewer goes light. */
+    body.light-theme { background: radial-gradient(circle at top, rgba(120,150,210,0.22), transparent 38%), linear-gradient(180deg, #eef2f9 0%, #dfe6f2 100%); color: #1a2233; }
+    body.light-theme .topbar, body.light-theme .panel-card { background: rgba(255,255,255,0.72); border-color: rgba(20,40,80,0.10); }
+    body.light-theme .viewer-panel, body.light-theme .side-panel { background: rgba(255,255,255,0.82); border-color: rgba(20,40,80,0.10); }
+    body.light-theme .brand-title .subtitle, body.light-theme .panel-row label { color: #5a6a85; }
+    body.light-theme .toolbar button { background: rgba(225,232,245,0.95); color: #1a2233; }
+    body.light-theme .status-badge { background: rgba(20,40,80,0.06); color: #25406e; }
+    body.light-theme .panel-row .value, body.light-theme #viewerCanvas { color: #1a2233; }
 
-    /* Input / textarea focus */
-    input[type="text"]:focus,
-    input[type="text"].hex-input:focus {
-      outline: none;
-      border-color: #1a73e8 !important;
-      box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
-    }
-    textarea:focus {
-      outline: none;
-      border-color: #1a73e8 !important;
-      box-shadow: 0 0 0 2px rgba(26,115,232,0.18) !important;
-    }
-    ::placeholder { color: #9aa0a6; }
-
-    /* Editable note input inside color ledger table */
-    .ledger-note-input {
-      width: 100%;
-      background: transparent;
-      border: none;
-      outline: none;
-      font-size: 10.5px;
-      font-family: inherit;
-      color: #1a1c1e;
-      padding: 0;
-      cursor: text;
-    }
-    .ledger-note-input:focus {
-      border-bottom: 1px solid #1a73e8;
-    }
+    @media (max-width: 1100px) { .content { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { .topbar { flex-direction: column; align-items: stretch; } }
   </style>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 </head>
-<body class="text-[#1a1c1e] font-sans text-[12.5px] p-[13px] min-h-screen bg-[#f7f8fa]">
-
-<!-- TOP BAR -->
-<div class="flex items-center gap-2.5 mb-[15px] pb-3" style="border-bottom:1px solid #e2e5ea">
-  <div class="w-9 h-9 rounded-[10px] flex-shrink-0 flex items-center justify-center text-lg"
-       style="background:#1a73e8;box-shadow:0 2px 8px rgba(26,115,232,0.28)">🎨</div>
-  <div>
-    <div class="text-[14px] font-bold tracking-[-0.3px]">Model Control Center</div>
-    <div class="text-[10px] mt-0.5" style="color:#5f6368">Developed by Le Van Thao</div>
-    <div class="text-[10px] mt-0.5" style="color:#5f6368"><b style="color:#1a73e8">05.666668.47</b> - Lê Văn Thảo</div>
-  </div>
-</div>
-
-<!-- SLOT 1 -->
-<div class="card-slot accordion-item rounded-xl mb-2.5"
-     style="background:#ffffff;border:1px solid #e2e5ea;border-left:2px solid #1a73e8;box-shadow:0 1px 3px rgba(0,0,0,0.07)"
-     id="slot1">
-
-  <!-- Accordion Header -->
-  <div class="accordion-header flex items-center justify-between px-3 py-2.5 cursor-pointer" onclick="toggleAccordion(this)">
-    <div class="flex items-center gap-2">
-      <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-           style="background:#e8f0fe;color:#1a73e8" id="num1">1</div>
-      <div class="text-[11.5px] font-semibold">File Excel #1</div>
-    </div>
-    <svg class="chevron-icon w-4 h-4 flex-shrink-0" style="color:#9aa0a6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-    </svg>
-  </div>
-
-  <!-- Accordion Content -->
-  <div class="accordion-content hidden px-3 pb-3">
-    <div class="flex items-center gap-2 mb-2 flex-wrap">
-      <div class="text-[10.5px] whitespace-nowrap" style="color:#5f6368">Màu:</div>
-      <div class="relative flex items-center gap-1.5">
-        <div class="w-5 h-5 rounded-[6px] cursor-pointer flex-shrink-0 transition-transform duration-150 hover:scale-110"
-             style="background:#00FF00;border:2px solid rgba(0,0,0,0.12);box-shadow:0 1px 4px rgba(0,0,0,0.14)"
-             id="swatch1"></div>
-        <input type="color" id="picker1" value="#00FF00" title="Chọn màu File #1"
-               class="absolute opacity-0 w-5 h-5 cursor-pointer border-none p-0 appearance-none"/>
-      </div>
-      <input type="text" id="hex1" value="#00FF00" maxlength="7"
-             class="hex-input font-mono text-[11px] rounded-md px-2 py-1 w-20 transition-all duration-200"
-             style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
-      <div class="flex gap-1.5 ml-1">
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#00FF00" title="Xanh lá" onclick="setColor(1,'#00FF00')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#0088FF" title="Xanh dương" onclick="setColor(1,'#0088FF')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FF6600" title="Cam" onclick="setColor(1,'#FF6600')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FFD700" title="Vàng" onclick="setColor(1,'#FFD700')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FF0000" title="Đỏ" onclick="setColor(1,'#FF0000')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#CC00FF" title="Tím" onclick="setColor(1,'#CC00FF')"></div>
-      </div>
-    </div>
-
-    <div class="relative rounded-lg px-[11px] py-[9px] cursor-pointer transition-all duration-200 flex items-center gap-2"
-         style="border:1.5px dashed #d0d3d8" id="zone1"
-         onmouseenter="this.style.borderColor='#1a73e8';this.style.background='#f0f4ff'"
-         onmouseleave="this.style.borderColor='#d0d3d8';this.style.background=''">
-      <input type="file" id="file1" accept=".xls,.xlsx" title="Chọn file Excel #1"
-             class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
-      <div class="text-base flex-shrink-0">📂</div>
-      <div class="text-[11.5px]" style="color:#5f6368">Chọn hoặc kéo thả <b style="color:#1a73e8">file Excel</b></div>
-    </div>
-    <div class="hidden text-[10.5px] font-mono mt-1 whitespace-nowrap overflow-hidden text-ellipsis"
-         style="color:#1e8e3e" id="fname1"></div>
-    <button id="applyBtn1" type="button" disabled
-            class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] text-white"
-            style="background:#1a73e8;box-shadow:0 1px 3px rgba(26,115,232,0.3)">🖌 Đổi màu File #1</button>
-    <button id="qtyBtn1" type="button" disabled
-            class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
-            style="background:#f0f7f4;border:1px solid #b7dfca;color:#1e8e3e">📊 Xem khối lượng</button>
-    <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult1"></div>
-    <textarea id="noteInput1" placeholder="Ghi chú cho vùng này (tuỳ chọn)..."
-              class="hidden w-full mt-1.5 px-2.5 py-2 font-sans text-[11px] transition-all duration-200 resize-none rounded-lg"
-              style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e" rows="2"></textarea>
-  </div>
-</div>
-
-<!-- SLOT 2 -->
-<div class="card-slot accordion-item rounded-xl mb-2.5"
-     style="background:#ffffff;border:1px solid #e2e5ea;border-left:2px solid #0f9d58;box-shadow:0 1px 3px rgba(0,0,0,0.07)"
-     id="slot2">
-
-  <!-- Accordion Header -->
-  <div class="accordion-header flex items-center justify-between px-3 py-2.5 cursor-pointer" onclick="toggleAccordion(this)">
-    <div class="flex items-center gap-2">
-      <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-           style="background:#e6f4ea;color:#0f9d58" id="num2">2</div>
-      <div class="text-[11.5px] font-semibold">File Excel #2</div>
-    </div>
-    <svg class="chevron-icon w-4 h-4 flex-shrink-0" style="color:#9aa0a6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-    </svg>
-  </div>
-
-  <!-- Accordion Content -->
-  <div class="accordion-content hidden px-3 pb-3">
-    <div class="flex items-center gap-2 mb-2 flex-wrap">
-      <div class="text-[10.5px] whitespace-nowrap" style="color:#5f6368">Màu:</div>
-      <div class="relative flex items-center gap-1.5">
-        <div class="w-5 h-5 rounded-[6px] cursor-pointer flex-shrink-0 transition-transform duration-150 hover:scale-110"
-             style="background:#0088FF;border:2px solid rgba(0,0,0,0.12);box-shadow:0 1px 4px rgba(0,0,0,0.14)"
-             id="swatch2"></div>
-        <input type="color" id="picker2" value="#0088FF" title="Chọn màu File #2"
-               class="absolute opacity-0 w-5 h-5 cursor-pointer border-none p-0 appearance-none"/>
-      </div>
-      <input type="text" id="hex2" value="#0088FF" maxlength="7"
-             class="hex-input font-mono text-[11px] rounded-md px-2 py-1 w-20 transition-all duration-200"
-             style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
-      <div class="flex gap-1.5 ml-1">
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#00FF00" title="Xanh lá" onclick="setColor(2,'#00FF00')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#0088FF" title="Xanh dương" onclick="setColor(2,'#0088FF')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FF6600" title="Cam" onclick="setColor(2,'#FF6600')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FFD700" title="Vàng" onclick="setColor(2,'#FFD700')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FF0000" title="Đỏ" onclick="setColor(2,'#FF0000')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#CC00FF" title="Tím" onclick="setColor(2,'#CC00FF')"></div>
-      </div>
-    </div>
-
-    <div class="relative rounded-lg px-[11px] py-[9px] cursor-pointer transition-all duration-200 flex items-center gap-2"
-         style="border:1.5px dashed #d0d3d8" id="zone2"
-         onmouseenter="this.style.borderColor='#1a73e8';this.style.background='#f0f4ff'"
-         onmouseleave="this.style.borderColor='#d0d3d8';this.style.background=''">
-      <input type="file" id="file2" accept=".xls,.xlsx" title="Chọn file Excel #2"
-             class="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
-      <div class="text-base flex-shrink-0">📂</div>
-      <div class="text-[11.5px]" style="color:#5f6368">Chọn hoặc kéo thả <b style="color:#1a73e8">file Excel</b></div>
-    </div>
-    <div class="hidden text-[10.5px] font-mono mt-1 whitespace-nowrap overflow-hidden text-ellipsis"
-         style="color:#1e8e3e" id="fname2"></div>
-    <button id="applyBtn2" type="button" disabled
-            class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px] text-white"
-            style="background:#1a73e8;box-shadow:0 1px 3px rgba(26,115,232,0.3)">🖌 Đổi màu File #2</button>
-    <button id="qtyBtn2" type="button" disabled
-            class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
-            style="background:#f0f7f4;border:1px solid #b7dfca;color:#1e8e3e">📊 Xem khối lượng</button>
-    <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult2"></div>
-    <textarea id="noteInput2" placeholder="Ghi chú cho vùng này (tuỳ chọn)..."
-              class="hidden w-full mt-1.5 px-2.5 py-2 font-sans text-[11px] transition-all duration-200 resize-none rounded-lg"
-              style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e" rows="2"></textarea>
-    <!-- Stats -->
-    <div class="grid grid-cols-1 tablet:grid-cols-3 gap-1.5 mt-2">
-      <div class="rounded-lg px-2.5 py-2"
-           style="background:#ffffff;border:1px solid #e2e5ea;box-shadow:0 1px 2px rgba(0,0,0,0.05)">
-        <div class="flex items-center justify-between mb-1">
-          <span class="text-[9.5px]" style="color:#5f6368">Tổng cấu kiện</span>
-          <span class="text-sm">📦</span>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">IFC</div>
+        <div class="brand-title">
+          <div class="name">Trimble IFC Viewer POC</div>
+          <div class="subtitle">Local Electron + xeokit + web-ifc</div>
         </div>
-        <div class="text-[17px] font-bold font-mono leading-none text-[#1a1c1e]" id="s-total">—</div>
       </div>
-      <div class="rounded-lg px-2.5 py-2"
-           style="background:#ffffff;border:1px solid #e2e5ea;box-shadow:0 1px 2px rgba(0,0,0,0.05)">
-        <div class="flex items-center justify-between mb-1">
-          <div class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full flex-shrink-0 inline-block" style="background:#1e8e3e"></span>
-            <span class="text-[9.5px]" style="color:#5f6368" id="label-s1">File #1</span>
+      <div class="toolbar">
+        <button type="button" id="openFileBtn">Mở file IFC</button>
+        <button type="button" id="openXktBtn" class="accent">Mở file XKT</button>
+        <button type="button" id="focusBtn" disabled>Focus</button>
+        <button type="button" id="fadeBtn" disabled>Fade</button>
+        <button type="button" id="themeBtn">Light</button>
+      </div>
+      <div class="status-badge" id="statusText">Ready — loading...</div>
+    </header>
+
+    <section class="content">
+      <article class="viewer-panel">
+        <canvas id="viewerCanvas"></canvas>
+        <div class="viewer-overlay" id="viewerOverlay">Starting viewer…</div>
+      </article>
+
+      <aside class="side-panel">
+        <div class="panel-card">
+          <h2>Selection</h2>
+          <div class="panel-row"><label>Object name</label><div class="value" id="infoName">Chưa chọn object.</div></div>
+          <div class="panel-row"><label>GUID / IfcGloballyUniqueId</label><div class="value" id="infoGuid">—</div></div>
+        </div>
+
+        <div class="panel-card">
+          <div class="info-block">
+            <h2>Notes</h2>
+            <p>Click 1 object trong viewer để chọn. Dùng <strong>Focus</strong> để fit camera và <strong>Fade</strong> để X-ray các object còn lại.</p>
+            <p class="note-sub">Mảnh 1 — chỉ khung viewer. Tô màu Excel (Mảnh 2) và 4D (Mảnh 3) sẽ cắm vào sau.</p>
           </div>
-          <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
-                style="background:#f0f0f0;color:#5f6368" id="badge-s1">Pending</span>
         </div>
-        <div class="text-[17px] font-bold font-mono leading-none" id="s-c1" style="color:#00FF00">—</div>
-      </div>
-      <div class="rounded-lg px-2.5 py-2"
-           style="background:#ffffff;border:1px solid #e2e5ea;box-shadow:0 1px 2px rgba(0,0,0,0.05)">
-        <div class="flex items-center justify-between mb-1">
-          <div class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full flex-shrink-0 inline-block" style="background:#1a73e8"></span>
-            <span class="text-[9.5px]" style="color:#5f6368" id="label-s2">File #2</span>
-          </div>
-          <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
-                style="background:#f0f0f0;color:#5f6368" id="badge-s2">Pending</span>
-        </div>
-        <div class="text-[17px] font-bold font-mono leading-none" id="s-c2" style="color:#0088FF">—</div>
-      </div>
-    </div>
+      </aside>
+    </section>
   </div>
-</div>
-
-<!-- SLOT 3: VIEWER SELECTION -->
-<div class="card-slot accordion-item rounded-xl mb-2.5"
-     style="background:#ffffff;border:1px solid #e2e5ea;border-left:2px solid #ea4335;box-shadow:0 1px 3px rgba(0,0,0,0.07)"
-     id="slot3">
-
-  <!-- Accordion Header -->
-  <div class="accordion-header flex items-center justify-between px-3 py-2.5 cursor-pointer" onclick="toggleAccordion(this)">
-    <div class="flex items-center gap-2">
-      <div class="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-           style="background:#fce8e6;color:#c5221f" id="num3">3</div>
-      <div class="text-[11.5px] font-semibold">Chọn trực tiếp trên Viewer</div>
-    </div>
-    <svg class="chevron-icon w-4 h-4 flex-shrink-0" style="color:#9aa0a6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-    </svg>
-  </div>
-
-  <!-- Accordion Content -->
-  <div class="accordion-content hidden px-3 pb-3">
-    <div class="flex items-center gap-2 mb-2 flex-wrap">
-      <div class="text-[10.5px] whitespace-nowrap" style="color:#5f6368">Màu:</div>
-      <div class="relative flex items-center gap-1.5">
-        <div class="w-5 h-5 rounded-[6px] cursor-pointer flex-shrink-0 transition-transform duration-150 hover:scale-110"
-             style="background:#FF0000;border:2px solid rgba(0,0,0,0.12);box-shadow:0 1px 4px rgba(0,0,0,0.14)"
-             id="swatch3"></div>
-        <input type="color" id="picker3" value="#FF0000" title="Chọn màu lựa chọn viewer"
-               class="absolute opacity-0 w-5 h-5 cursor-pointer border-none p-0 appearance-none"/>
-      </div>
-      <input type="text" id="hex3" value="#FF0000" maxlength="7"
-             class="hex-input font-mono text-[11px] rounded-md px-2 py-1 w-20 transition-all duration-200"
-             style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
-      <div class="flex gap-1.5 ml-1">
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#00FF00" title="Xanh lá" onclick="setColor(3,'#00FF00')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#0088FF" title="Xanh dương" onclick="setColor(3,'#0088FF')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FF6600" title="Cam" onclick="setColor(3,'#FF6600')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FFD700" title="Vàng" onclick="setColor(3,'#FFD700')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#FF0000" title="Đỏ" onclick="setColor(3,'#FF0000')"></div>
-        <div class="w-3.5 h-3.5 rounded-[4px] cursor-pointer border-2 border-transparent transition-transform duration-150 flex-shrink-0 hover:scale-125 hover:border-black/[0.22]" style="background:#CC00FF" title="Tím" onclick="setColor(3,'#CC00FF')"></div>
-      </div>
-    </div>
-
-    <input type="text" id="noteInput" placeholder="Ghi chú (vd: Đã gia công, Đã ban hành...)"
-           class="w-full mb-2 px-2.5 py-2 font-sans text-[11px] rounded-lg transition-all duration-200"
-           style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e"/>
-    <div class="flex gap-1.5 mb-2.5">
-      <button id="captureSelBtn" type="button"
-              class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
-              style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e">📍 Apply</button>
-      <button id="paintSelBtn" type="button" disabled
-              class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
-              style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">✅ OK</button>
-    </div>
-    <div class="text-[10.5px] font-mono mt-1" style="color:#5f6368" id="selInfo">Chưa chọn gì — click cấu kiện trên viewer rồi bấm "Lấy lựa chọn"</div>
-    <button id="qtyBtn3" type="button"
-            class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
-            style="background:#f0f7f4;border:1px solid #b7dfca;color:#1e8e3e">📊 Xem khối lượng</button>
-    <div class="hidden mt-1.5" id="colorLedger"
-         style="border:1px solid #e2e5ea;border-radius:8px;max-height:240px;overflow-y:auto;overflow-x:auto"></div>
-    <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult3"></div>
-  </div>
-</div>
-
-<div class="h-px my-3 hidden" style="background:#e2e5ea"></div>
-
-<div class="h-[3px] rounded mb-3 overflow-hidden hidden" style="background:#e2e5ea" id="progWrap">
-  <div class="h-full w-0 rounded transition-[width] duration-300"
-       style="background:linear-gradient(90deg,#1a73e8,#0f9d58)" id="progBar"></div>
-</div>
-
-<div class="flex gap-1.5 mb-2.5">
-  <button id="resetBtn" type="button"
-          class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
-          style="background:#f7f8fa;border:1px solid #e2e5ea;color:#1a1c1e">↺ Reset</button>
-</div>
-
-<div class="mb-2.5">
-  <div class="text-[10.5px] mb-1" style="color:#5f6368">Tên view muốn lưu (tuỳ chọn)</div>
-  <input type="text" id="viewName" placeholder="Ví dụ: Approval 2026-04-24"
-         class="w-full px-2.5 py-2 rounded-lg font-sans text-xs transition-all duration-200"
-         style="background:#ffffff;border:1px solid #e2e5ea;color:#1a1c1e"/>
-</div>
-<div class="flex gap-1.5">
-  <button id="saveBtn" type="button"
-          class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
-          style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">💾 Save View</button>
-</div>
-
-<div class="mt-2.5">
-  <div class="text-[10.5px] font-semibold mb-1" style="color:#5f6368">📋 Saved Views</div>
-  <div id="viewListContainer" class="max-h-40 overflow-y-auto">
-    <div class="text-[10.5px] text-slate-400 italic">Chưa có view nào được lưu.</div>
-  </div>
-</div>
-
-<div class="h-px my-3" style="background:#e2e5ea"></div>
-
-<div class="text-[10px] font-semibold tracking-[0.06em] uppercase mb-1" style="color:#1a73e8">Log</div>
-<div id="log"></div>
-
-<div class="mt-3 text-[10px] text-center" style="color:#9aa0a6">Model Control Center v2.0 · Le Van Thao</div>
-
-<script>
-  function toggleAccordion(headerEl) {
-    var item = headerEl.closest ? headerEl.closest('.accordion-item') : headerEl.parentElement;
-    if (!item) return;
-    var isActive = item.classList.contains('active');
-    item.classList.toggle('active');
-    var content = item.querySelector('.accordion-content');
-    if (content) content.classList.toggle('hidden', isActive);
-  }
-</script>
-<script src="app.js?v=14"></script>
+  <script type="module" src="renderer.js"></script>
 </body>
 </html>
