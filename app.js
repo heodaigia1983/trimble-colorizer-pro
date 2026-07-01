@@ -476,6 +476,20 @@ async function fetchQuantities(api, map){
       catch(e){ miss+=chunk.length; continue; }
       if(!Array.isArray(props)){ miss+=chunk.length; continue; }
       props.forEach(function(op){
+        if(!window.__diagLogged){
+          window.__diagLogged=true;
+          console.log("=== DIAG: full properties of first object ===");
+          if(Array.isArray(op.properties)){
+            op.properties.forEach(function(ps){
+              console.log("--- PropertySet:", ps.name||ps.pset||"(no name)");
+              if(Array.isArray(ps.properties)){
+                ps.properties.forEach(function(p){
+                  console.log("   ", p.name, "=", p.value);
+                });
+              }
+            });
+          }
+        }
         var weight=null, length=null, profile=null, area=null, found=false;
         var assemblyTierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
         if(Array.isArray(op.properties)){
@@ -1018,6 +1032,12 @@ function deleteViewRecord(viewId){
 }
 
 /* ═══ Option 4 — Lọc theo Assembly Position (Prefix) ═══ */
+/* Trích prefix thật từ Assembly Position kiểu "Z213-TS59" → "TS" (chữ ngay trước số cuối) */
+function extractAssemblyPrefix(pos){
+  if(!pos) return null;
+  var m=String(pos).match(/([A-Za-z]+)\d+$/);
+  return m?m[1]:null;
+}
 /* Đọc Assembly Position của 1 object (tái dùng ASSEMBLY_TIERS — KHÔNG đụng fetchQuantities) */
 function apExtractAssembly(op){
   var tierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
@@ -1098,7 +1118,7 @@ async function apBuildCache(){
           var rid=(op&&op.id!=null)?op.id:chunk[j];
           var ap=apExtractAssembly(op);
           var nm=apExtractName(op);
-          cache.set(makeObjectKey(mid,rid),{modelId:mid,runtimeId:rid,ap:ap||"",name:nm||""});
+          cache.set(makeObjectKey(mid,rid),{modelId:mid,runtimeId:rid,ap:ap||"",apPrefix:extractAssemblyPrefix(ap),name:nm||""});
         }
         done+=chunk.length;
         apSetProgress(total?Math.round(done/total*100):100);
@@ -1131,7 +1151,7 @@ function apFilter(){
   if(!prefix){apRenderResults([]);if(countEl)countEl.textContent="";apSetStatus("Nhập prefix rồi bấm Tìm.");return;}
   var matches=[];
   _apCache.forEach(function(v,key){
-    if(v.ap && v.ap.indexOf(prefix)===0){matches.push({key:key,ap:v.ap,name:v.name});} // startsWith, phân biệt hoa thường
+    if(v.apPrefix!=null && v.apPrefix===prefix){matches.push({key:key,ap:v.ap,name:v.name});} // so khớp tuyệt đối prefix đã trích, phân biệt hoa thường
   });
   matches.sort(function(a,b){var x=a.ap.localeCompare(b.ap);return x!==0?x:String(a.name).localeCompare(String(b.name));});
   if(countEl)countEl.textContent=fmtN(matches.length)+" kết quả";
