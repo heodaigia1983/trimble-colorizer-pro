@@ -37,6 +37,7 @@ var _lastQty = {};
 var _apCache = null;          // Map<objectKey, {modelId, runtimeId, ap, name}>
 var _apScanning = false;
 var _apSelected = new Set();  // objectKeys đang highlight tạm thời
+var _apHidden = new Set();
 var AP_HIGHLIGHT = "#9334e6";
 
 function makeObjectKey(modelId, runtimeId){
@@ -463,6 +464,18 @@ var ASSEMBLY_TIERS = [
   /^position$/i,
   /drawing\s*no/i
 ];
+var AP_TYPE_MAP = {
+  DM:"Kết cấu không shop", GD:"Dầm chính", BE:"Dầm phụ", FB:"Dầm phụ đỡ sàn",
+  CB:"Dầm cầu trục", JB:"Dầm đỉnh cột", RF:"Vì kèo", SC:"Cột phụ", CO:"Cột chính",
+  CP:"Dầm console canopy", MO:"Kết cấu nóc gió", PU:"Xà gồ mái", GI:"Xà gồ vách",
+  FA:"Kết cấu mặt dựng", BR:"Tay chống xà gồ", HB:"Giằng ngang", VB:"Giằng dọc",
+  XB:"Giằng dọc phương X", YB:"Giằng dọc phương Y", SR:"Ty giằng xà gồ",
+  LP:"Bản mã rời", CL:"Thép góc liên kết", ST:"Dầm thang", TR:"Bậc thang",
+  LD:"Thang leo", HR:"Lan can", GR:"Tấm grating", CH:"Tấm chống trượt",
+  CI:"Bản mã chôn bê tông", FS:"Khung phụ", SG:"Cửa an toàn", TS:"Kèo dàn",
+  TB:"Giằng dàn", TC:"Cánh trên dàn", BT:"Chân đỡ", BOLT:"Bu lông",
+  NUT:"Đai ốc", PW:"Long đền", VTX:"Vật tư kho", UN:"Cấu kiện đặc biệt"
+};
 
 /* Gom theo tên cấu kiện Assembly: { count, length, weight } cho mỗi nhóm */
 async function fetchQuantities(api, map){
@@ -1091,6 +1104,21 @@ function apSetProgress(p){
 }
 function apSetStatus(t){var e=document.getElementById("apStatus");if(e)e.textContent=t||"";}
 /* Quét TOÀN BỘ object 1 lần, build cache RAM (key giống _colorLedger) */
+function apExtractQty(op){
+  var weight=null, length=null;
+  if(op && Array.isArray(op.properties)){
+    op.properties.forEach(function(ps){
+      if(!Array.isArray(ps.properties))return;
+      ps.properties.forEach(function(p){
+        var v=parseFloat(p.value);
+        if(isNaN(v))return;
+        if(weight==null && QTY_PATTERNS.weight.test(p.name))weight=v;
+        if(length==null && QTY_PATTERNS.length.test(p.name))length=v;
+      });
+    });
+  }
+  return {weight:weight,length:length};
+}
 async function apBuildCache(){
   if(_apScanning)return;
   _apScanning=true;
@@ -1128,7 +1156,9 @@ async function apBuildCache(){
           var rid=(op&&op.id!=null)?op.id:chunk[j];
           var ap=apExtractAssembly(op);
           var nm=apExtractName(op);
-          cache.set(makeObjectKey(mid,rid),{modelId:mid,runtimeId:rid,ap:ap||"",apPrefix:extractAssemblyPrefix(ap),name:nm||""});
+          var apPfx=extractAssemblyPrefix(ap);
+          var qty=apExtractQty(op);
+          cache.set(makeObjectKey(mid,rid),{modelId:mid,runtimeId:rid,ap:ap||"",apPrefix:apPfx,name:nm||"",weight:qty.weight,length:qty.length,typeName:(apPfx&&AP_TYPE_MAP[apPfx])||apPfx||"—"});
         }
         done+=chunk.length;
         apSetProgress(total?Math.round(done/total*100):100);
@@ -1176,14 +1206,30 @@ function apRenderResults(matches){
   }
   listEl.innerHTML=matches.map(function(m){
     var checked=_apSelected.has(m.key)?"checked":"";
-    return '<label class="ap-row flex items-center gap-2 px-2 py-1.5 cursor-pointer" style="border-bottom:1px solid #f0f2f5">'
+    var hidden=_apHidden.has(m.key);
+    var entry=_apCache&&_apCache.get(m.key);
+    var wDisp=(entry&&entry.weight!=null)?(entry.weight/1000).toLocaleString(undefined,{maximumFractionDigits:3}):"—";
+    var lDisp=(entry&&entry.length!=null)?entry.length.toLocaleString(undefined,{maximumFractionDigits:1}):"—";
+    var typeName=(entry&&entry.typeName)||"—";
+    return '<div class="ap-row flex items-center gap-2 px-2 py-1.5" style="border-bottom:1px solid #f0f2f5">'
+      +'<label style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;cursor:pointer">'
       +'<input type="checkbox" class="ap-check" data-key="'+escapeHtml(m.key)+'" '+checked+' style="width:14px;height:14px;flex-shrink:0;accent-color:#9334e6;cursor:pointer"/>'
-      +'<span class="font-mono text-[10.5px] font-semibold flex-shrink-0" style="color:#1a1c1e">'+escapeHtml(m.ap||"—")+'</span>'
-      +'<span class="text-[10px] truncate" style="color:#5f6368">'+escapeHtml(m.name||"")+'</span>'
-      +'</label>';
+      +'<span class="font-mono text-[10.5px] font-semibold flex-shrink-0" style="color:#1a1c1e;min-width:64px">'+escapeHtml(m.ap||"—")+'</span>'
+      +'<span class="text-[9.5px] truncate flex-shrink-0" style="color:#5f6368;min-width:70px">'+escapeHtml(typeName)+'</span>'
+      +'<span class="font-mono text-[9.5px] text-right flex-shrink-0" style="color:#5f6368;min-width:48px">'+wDisp+'</span>'
+      +'<span class="font-mono text-[9.5px] text-right flex-shrink-0" style="color:#5f6368;min-width:56px">'+lDisp+'</span>'
+      +'</label>'
+      +'<button type="button" class="ap-vis-btn" data-key="'+escapeHtml(m.key)+'" title="'+(hidden?"Bấm để hiện lại":"Bấm để ẩn")+'" style="flex-shrink:0;width:22px;height:22px;border-radius:6px;border:1px solid #e2e5ea;background:#f7f8fa;cursor:pointer;font-size:11px">'+(hidden?"🚫":"👁")+'</button>'
+      +'</div>';
   }).join("");
   Array.prototype.forEach.call(listEl.querySelectorAll(".ap-check"),function(cb){
     cb.addEventListener("change",function(){apToggle(this.dataset.key,this.checked);});
+  });
+  Array.prototype.forEach.call(listEl.querySelectorAll(".ap-vis-btn"),function(btn){
+    btn.addEventListener("click",function(e){
+      e.preventDefault();e.stopPropagation();
+      apToggleVisibility(this.dataset.key,this);
+    });
   });
 }
 /* Highlight tạm thời 1 object — KHÔNG ghi _colorLedger, KHÔNG lưu, KHÔNG tính MTO */
@@ -1198,6 +1244,23 @@ async function apToggle(key,isChecked){
     }else{
       _apSelected.delete(key);
       await api.viewer.setObjectState({modelObjectIds:[{modelId:entry.modelId,objectRuntimeIds:[Number(entry.runtimeId)]}]},{color:"reset"});
+    }
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+}
+async function apToggleVisibility(key,btnEl){
+  var entry=_apCache&&_apCache.get(key);
+  if(!entry)return;
+  try{
+    var api=await getAPI();
+    var hide=!_apHidden.has(key);
+    if(hide){
+      _apHidden.add(key);
+      await api.viewer.setObjectState({modelObjectIds:[{modelId:entry.modelId,objectRuntimeIds:[Number(entry.runtimeId)]}]},{visible:false});
+      if(btnEl){btnEl.textContent="🚫";btnEl.title="Bấm để hiện lại";}
+    }else{
+      _apHidden.delete(key);
+      await api.viewer.setObjectState({modelObjectIds:[{modelId:entry.modelId,objectRuntimeIds:[Number(entry.runtimeId)]}]},{visible:true});
+      if(btnEl){btnEl.textContent="👁";btnEl.title="Bấm để ẩn";}
     }
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
