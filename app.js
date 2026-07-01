@@ -1097,6 +1097,8 @@ async function apBuildCache(){
       if(a<RETRY_MAX)await sleep(RETRY_DELAY);
     }
     if(!Array.isArray(raw)||!raw.length)throw new Error("Viewer trống. Đợi model load.");
+    console.log("[DIAG Option4] raw.length:", raw.length);
+    console.log("[DIAG Option4] raw[0] full:", JSON.stringify(raw[0]));
     var models=[],total=0;
     raw.forEach(function(g){
       if(!g||!g.modelId)return;
@@ -1125,6 +1127,9 @@ async function apBuildCache(){
       }
     }
     _apCache=cache;
+    console.log("[DIAG Option4] Cache size:", _apCache.size);
+    console.log("[DIAG Option4] Sample entries:", Array.from(_apCache.entries()).slice(0,5));
+    console.log("[DIAG Option4] Pattern dùng:", ASSEMBLY_TIERS);
     apSetStatus("Đã quét "+fmtN(cache.size)+" cấu kiện. Lọc tức thời từ giờ.");
     log("✓ Option 4: cache "+fmtN(cache.size)+" cấu kiện.","ok");
   }catch(e){
