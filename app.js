@@ -1073,6 +1073,16 @@ function apExtractName(op){
   if(op.class && String(op.class).trim())return String(op.class).trim();
   return"";
 }
+/* Riêng cho Option 4: raw[0].objects trả về [{id:N},...] chứ không phải number thuần như flat() gốc kỳ vọng */
+function apFlatIds(v){
+  if(!Array.isArray(v))return [];
+  var out=[];
+  v.forEach(function(x){
+    if(typeof x==="number")out.push(x);
+    else if(x && typeof x==="object" && typeof x.id==="number")out.push(x.id);
+  });
+  return out;
+}
 function apSetProgress(p){
   var w=document.getElementById("apProgWrap"),b=document.getElementById("apProgBar");
   if(!w||!b)return;
@@ -1097,12 +1107,10 @@ async function apBuildCache(){
       if(a<RETRY_MAX)await sleep(RETRY_DELAY);
     }
     if(!Array.isArray(raw)||!raw.length)throw new Error("Viewer trống. Đợi model load.");
-    console.log("[DIAG Option4] raw.length:", raw.length);
-    console.log("[DIAG Option4] raw[0] full:", JSON.stringify(raw[0]));
     var models=[],total=0;
     raw.forEach(function(g){
       if(!g||!g.modelId)return;
-      var ids=flat(g.objects||g.objectRuntimeIds||g.ids);
+      var ids=apFlatIds(g.objects||g.objectRuntimeIds||g.ids);
       if(!ids.length)return;
       models.push({modelId:g.modelId,ids:ids});
       total+=ids.length;
@@ -1127,9 +1135,6 @@ async function apBuildCache(){
       }
     }
     _apCache=cache;
-    console.log("[DIAG Option4] Cache size:", _apCache.size);
-    console.log("[DIAG Option4] Sample entries:", Array.from(_apCache.entries()).slice(0,5));
-    console.log("[DIAG Option4] Pattern dùng:", ASSEMBLY_TIERS);
     apSetStatus("Đã quét "+fmtN(cache.size)+" cấu kiện. Lọc tức thời từ giờ.");
     log("✓ Option 4: cache "+fmtN(cache.size)+" cấu kiện.","ok");
   }catch(e){
