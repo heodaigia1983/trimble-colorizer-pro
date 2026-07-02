@@ -38,6 +38,7 @@ var _apCache = null;          // Map<objectKey, {modelId, runtimeId, ap, name}>
 var _apScanning = false;
 var _apSelected = new Set();  // objectKeys đang highlight tạm thời
 var _apHidden = new Set();
+var _apLastMatches = [];
 var AP_HIGHLIGHT = "#9334e6";
 
 function makeObjectKey(modelId, runtimeId){
@@ -1195,6 +1196,7 @@ function apFilter(){
   });
   matches.sort(function(a,b){var x=a.ap.localeCompare(b.ap);return x!==0?x:String(a.name).localeCompare(String(b.name));});
   if(countEl)countEl.textContent=fmtN(matches.length)+" kết quả";
+  _apLastMatches = matches;
   apRenderResults(matches);
 }
 function apRenderResults(matches){
@@ -1231,6 +1233,10 @@ function apRenderResults(matches){
       apToggleVisibility(this.dataset.key,this);
     });
   });
+  var allCheck=document.getElementById("apSelectAllCheck");
+  if(allCheck){
+    allCheck.checked = matches.length>0 && matches.every(function(m){return _apSelected.has(m.key);});
+  }
 }
 /* Highlight tạm thời 1 object — KHÔNG ghi _colorLedger, KHÔNG lưu, KHÔNG tính MTO */
 async function apToggle(key,isChecked){
@@ -1263,6 +1269,41 @@ async function apToggleVisibility(key,btnEl){
       if(btnEl){btnEl.textContent="👁";btnEl.title="Bấm để ẩn";}
     }
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+}
+async function apSelectAll(checked){
+  if(!_apLastMatches.length)return;
+  var byModel=new Map();
+  _apLastMatches.forEach(function(m){
+    var entry=_apCache.get(m.key);
+    if(!entry)return;
+    if(checked)_apSelected.add(m.key);else _apSelected.delete(m.key);
+    var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
+    arr.push(Number(entry.runtimeId));
+  });
+  try{
+    var api=await getAPI();
+    for(var entry of byModel){await paintBatch(api,entry[0],entry[1],{color:checked?AP_HIGHLIGHT:"reset"});}
+    log("✓ Option 4: đã "+(checked?"chọn":"bỏ chọn")+" "+fmtN(_apLastMatches.length)+" cấu kiện.","ok");
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+  apRenderResults(_apLastMatches);
+}
+
+async function apShowHideSelected(hide){
+  if(!_apSelected.size){log("✗ Chưa chọn cấu kiện nào.","warn");return;}
+  var byModel=new Map();
+  _apSelected.forEach(function(key){
+    var entry=_apCache.get(key);
+    if(!entry)return;
+    if(hide)_apHidden.add(key);else _apHidden.delete(key);
+    var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
+    arr.push(Number(entry.runtimeId));
+  });
+  try{
+    var api=await getAPI();
+    for(var entry of byModel){await paintBatch(api,entry[0],entry[1],{visible:!hide});}
+    log("✓ Option 4: đã "+(hide?"ẩn":"hiện")+" "+fmtN(_apSelected.size)+" cấu kiện.","ok");
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+  apRenderResults(_apLastMatches);
 }
 /* Bỏ chọn tất cả → trả màu gốc model cho mọi object Option 4 đang highlight */
 async function apClearAll(){
@@ -1322,5 +1363,8 @@ document.getElementById("qtyBtn3").addEventListener("click",async function(){awa
   var sb=document.getElementById("apSearchBtn");if(sb)sb.addEventListener("click",apSearch);
   var pf=document.getElementById("apPrefix");if(pf)pf.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();apSearch();}});
   var cb=document.getElementById("apClearBtn");if(cb)cb.addEventListener("click",apClearAll);
+  document.getElementById("apSelectAllCheck").addEventListener("change",function(){apSelectAll(this.checked);});
+  document.getElementById("apShowSelBtn").addEventListener("click",function(){apShowHideSelected(false);});
+  document.getElementById("apHideSelBtn").addEventListener("click",function(){apShowHideSelected(true);});
 })();
 renderViewList();

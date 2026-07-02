@@ -463,7 +463,21 @@
       <div class="text-[10px] font-semibold whitespace-nowrap" style="color:#9334e6" id="apCount"></div>
     </div>
 
+    <label class="flex items-center gap-2 px-2 py-1 mb-1 cursor-pointer" style="border:1px solid #e2e5ea;border-radius:8px;background:#f7f8fa">
+      <input type="checkbox" id="apSelectAllCheck" style="width:14px;height:14px;flex-shrink:0;accent-color:#9334e6;cursor:pointer"/>
+      <span class="text-[10.5px] font-semibold" style="color:#1a1c1e">Chọn tất cả cấu kiện đang lọc</span>
+    </label>
+
     <div id="apList" style="border:1px solid #e2e5ea;border-radius:8px;max-height:260px;overflow-y:auto"></div>
+
+    <div class="flex gap-1.5 mt-1.5">
+      <button id="apShowSelBtn" type="button"
+              class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
+              style="background:#f0f7f4;border:1px solid #b7dfca;color:#1e8e3e">👁 Hiện đã chọn</button>
+      <button id="apHideSelBtn" type="button"
+              class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
+              style="background:#fdf0f0;border:1px solid #f0c2c2;color:#c5221f">🚫 Ẩn đã chọn</button>
+    </div>
 
     <button id="apClearBtn" type="button"
             class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
@@ -521,6 +535,6 @@
     if (content) content.classList.toggle('hidden', isActive);
   }
 </script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
