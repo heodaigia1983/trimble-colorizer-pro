@@ -1327,30 +1327,17 @@ async function apShowHideSelected(hide){
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
   apRenderResults(_apLastMatches);
 }
-/* Isolate: ẩn toàn bộ model, chỉ hiện riêng các cấu kiện Option 4 đang tick */
-async function apIsolateSelected(){
-  if(!_apSelected.size){log("✗ Chưa chọn cấu kiện nào.","warn");return;}
-  var checkedRows=document.querySelectorAll("#apList .ap-check:checked");
-  log("DEBUG tick count: "+checkedRows.length,"info");
-  var byModel=new Map();
-  _apSelected.forEach(function(key){
-    log("DEBUG cache lookup key="+key+" hit="+(!!_apCache.get(key)),"info");
-    var entry=_apCache.get(key);
-    if(!entry)return;
-    var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
-    arr.push(Number(entry.runtimeId));
-  });
-  log("DEBUG byModel.size: "+byModel.size+" | keys: "+Array.from(byModel.keys()).join(","),"info");
+/* Chọn (select/highlight) trong viewer tất cả cấu kiện Option 4 đang tick */
+async function apSelectChecked(){
   try{
     var api=await getAPI();
-    var hideAllRes=await api.viewer.setObjectState(undefined,{visible:false});
-    log("DEBUG hide-all setObjectState result: "+JSON.stringify(hideAllRes),"info");
-    for(var entry of byModel){
-      log("DEBUG model "+entry[0]+" -> "+entry[1].length+" ids","info");
-      var pbRes=await paintBatch(api,entry[0],entry[1],{visible:true});
-      log("DEBUG paintBatch result for model "+entry[0]+": "+JSON.stringify(pbRes),"info");
+    if(!_apSelected.size){
+      log("✗ Chưa tick cấu kiện nào.","warn");
+      await api.viewer.setSelection({modelObjectIds:[]},"set");
+      return;
     }
-    log("✓ Option 4: đã cô lập (isolate) "+fmtN(_apSelected.size)+" cấu kiện.","ok");
+    await apSyncSelection(api);
+    log("✓ Option 4: đã chọn "+fmtN(_apSelected.size)+" cấu kiện trên viewer.","ok");
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
 /* Bỏ chọn tất cả → trả màu gốc model cho mọi object Option 4 đang highlight */
@@ -1412,7 +1399,7 @@ document.getElementById("qtyBtn3").addEventListener("click",async function(){awa
   var pf=document.getElementById("apPrefix");if(pf)pf.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();apSearch();}});
   var cb=document.getElementById("apClearBtn");if(cb)cb.addEventListener("click",apClearAll);
   document.getElementById("apSelectAllCheck").addEventListener("change",function(){apSelectAll(this.checked);});
-  document.getElementById("apShowSelBtn").addEventListener("click",apIsolateSelected);
+  document.getElementById("apShowSelBtn").addEventListener("click",apSelectChecked);
   document.getElementById("apHideSelBtn").addEventListener("click",function(){apShowHideSelected(true);});
 })();
 renderViewList();
