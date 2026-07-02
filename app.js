@@ -1304,17 +1304,25 @@ async function apSelectAll(checked){
 
 async function apShowHideSelected(hide){
   if(!_apSelected.size){log("✗ Chưa chọn cấu kiện nào.","warn");return;}
+  var checkedRows=document.querySelectorAll("#apList .ap-check:checked");
+  log("DEBUG tick count: "+checkedRows.length,"info");
   var byModel=new Map();
   _apSelected.forEach(function(key){
+    log("DEBUG cache lookup key="+key+" hit="+(!!_apCache.get(key)),"info");
     var entry=_apCache.get(key);
     if(!entry)return;
     if(hide)_apHidden.add(key);else _apHidden.delete(key);
     var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
     arr.push(Number(entry.runtimeId));
   });
+  log("DEBUG byModel.size: "+byModel.size+" | keys: "+Array.from(byModel.keys()).join(","),"info");
   try{
     var api=await getAPI();
-    for(var entry of byModel){await paintBatch(api,entry[0],entry[1],{visible:!hide});}
+    for(var entry of byModel){
+      log("DEBUG model "+entry[0]+" -> "+entry[1].length+" ids","info");
+      var pbRes=await paintBatch(api,entry[0],entry[1],{visible:!hide});
+      log("DEBUG paintBatch result for model "+entry[0]+": "+JSON.stringify(pbRes),"info");
+    }
     log("✓ Option 4: đã "+(hide?"ẩn":"hiện")+" "+fmtN(_apSelected.size)+" cấu kiện.","ok");
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
   apRenderResults(_apLastMatches);
@@ -1322,17 +1330,26 @@ async function apShowHideSelected(hide){
 /* Isolate: ẩn toàn bộ model, chỉ hiện riêng các cấu kiện Option 4 đang tick */
 async function apIsolateSelected(){
   if(!_apSelected.size){log("✗ Chưa chọn cấu kiện nào.","warn");return;}
+  var checkedRows=document.querySelectorAll("#apList .ap-check:checked");
+  log("DEBUG tick count: "+checkedRows.length,"info");
   var byModel=new Map();
   _apSelected.forEach(function(key){
+    log("DEBUG cache lookup key="+key+" hit="+(!!_apCache.get(key)),"info");
     var entry=_apCache.get(key);
     if(!entry)return;
     var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
     arr.push(Number(entry.runtimeId));
   });
+  log("DEBUG byModel.size: "+byModel.size+" | keys: "+Array.from(byModel.keys()).join(","),"info");
   try{
     var api=await getAPI();
-    await api.viewer.setObjectState(undefined,{visible:false});
-    for(var entry of byModel){await paintBatch(api,entry[0],entry[1],{visible:true});}
+    var hideAllRes=await api.viewer.setObjectState(undefined,{visible:false});
+    log("DEBUG hide-all setObjectState result: "+JSON.stringify(hideAllRes),"info");
+    for(var entry of byModel){
+      log("DEBUG model "+entry[0]+" -> "+entry[1].length+" ids","info");
+      var pbRes=await paintBatch(api,entry[0],entry[1],{visible:true});
+      log("DEBUG paintBatch result for model "+entry[0]+": "+JSON.stringify(pbRes),"info");
+    }
     log("✓ Option 4: đã cô lập (isolate) "+fmtN(_apSelected.size)+" cấu kiện.","ok");
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
