@@ -1238,6 +1238,19 @@ function apRenderResults(matches){
     allCheck.checked = matches.length>0 && matches.every(function(m){return _apSelected.has(m.key);});
   }
 }
+/* Đồng bộ selection thật trên viewer (api.viewer.setSelection) theo toàn bộ _apSelected hiện tại */
+async function apSyncSelection(api){
+  var byModel=new Map();
+  _apSelected.forEach(function(key){
+    var entry=_apCache&&_apCache.get(key);
+    if(!entry)return;
+    var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
+    arr.push(Number(entry.runtimeId));
+  });
+  var sel=[];
+  byModel.forEach(function(ids,mid){sel.push({modelId:mid,objectRuntimeIds:ids});});
+  await api.viewer.setSelection({modelObjectIds:sel},"set");
+}
 /* Highlight tạm thời 1 object — KHÔNG ghi _colorLedger, KHÔNG lưu, KHÔNG tính MTO */
 async function apToggle(key,isChecked){
   var entry=_apCache&&_apCache.get(key);
@@ -1251,6 +1264,7 @@ async function apToggle(key,isChecked){
       _apSelected.delete(key);
       await api.viewer.setObjectState({modelObjectIds:[{modelId:entry.modelId,objectRuntimeIds:[Number(entry.runtimeId)]}]},{color:"reset"});
     }
+    await apSyncSelection(api);
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
 async function apToggleVisibility(key,btnEl){
@@ -1304,6 +1318,23 @@ async function apShowHideSelected(hide){
     log("✓ Option 4: đã "+(hide?"ẩn":"hiện")+" "+fmtN(_apSelected.size)+" cấu kiện.","ok");
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
   apRenderResults(_apLastMatches);
+}
+/* Isolate: ẩn toàn bộ model, chỉ hiện riêng các cấu kiện Option 4 đang tick */
+async function apIsolateSelected(){
+  if(!_apSelected.size){log("✗ Chưa chọn cấu kiện nào.","warn");return;}
+  var byModel=new Map();
+  _apSelected.forEach(function(key){
+    var entry=_apCache.get(key);
+    if(!entry)return;
+    var arr=byModel.get(entry.modelId);if(!arr){arr=[];byModel.set(entry.modelId,arr);}
+    arr.push(Number(entry.runtimeId));
+  });
+  try{
+    var api=await getAPI();
+    await api.viewer.setObjectState(undefined,{visible:false});
+    for(var entry of byModel){await paintBatch(api,entry[0],entry[1],{visible:true});}
+    log("✓ Option 4: đã cô lập (isolate) "+fmtN(_apSelected.size)+" cấu kiện.","ok");
+  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
 }
 /* Bỏ chọn tất cả → trả màu gốc model cho mọi object Option 4 đang highlight */
 async function apClearAll(){
@@ -1364,7 +1395,7 @@ document.getElementById("qtyBtn3").addEventListener("click",async function(){awa
   var pf=document.getElementById("apPrefix");if(pf)pf.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();apSearch();}});
   var cb=document.getElementById("apClearBtn");if(cb)cb.addEventListener("click",apClearAll);
   document.getElementById("apSelectAllCheck").addEventListener("change",function(){apSelectAll(this.checked);});
-  document.getElementById("apShowSelBtn").addEventListener("click",function(){apShowHideSelected(false);});
+  document.getElementById("apShowSelBtn").addEventListener("click",apIsolateSelected);
   document.getElementById("apHideSelBtn").addEventListener("click",function(){apShowHideSelected(true);});
 })();
 renderViewList();
