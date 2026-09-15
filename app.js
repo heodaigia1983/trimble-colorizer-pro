@@ -452,7 +452,7 @@ async function paintSlot(slot){
 /* ═══ Quantities (Qto) ═══ */
 var BATCH_PROP = 200;
 var QTY_PATTERNS = {
-  weight: /NetWeight|GrossWeight|^Weight$/i,
+  weight: /NetWeight|GrossWeight|^Weight$|^Assembly\/Cast unit weight$/i,
   length: /^Length$/i,
   profile: /^PROFILE$|profile|member.*size|section/i,
   area: /NetArea|GrossArea|^Area$/i
