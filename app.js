@@ -1049,7 +1049,10 @@ function deleteViewRecord(viewId){
 /* Trích prefix thật từ Assembly Position kiểu "Z213-TS59" → "TS" (chữ ngay trước số cuối) */
 function extractAssemblyPrefix(pos){
   if(!pos) return null;
-  var m=String(pos).match(/([A-Za-z]+)\d+$/);
+  var s=String(pos);
+  var m=s.match(/([A-Za-z]+)\d+$/);            // dạng cũ: Z213-TS59 → TS
+  if(m) return m[1];
+  m=s.match(/-([A-Za-z]+)[\d.]*-\d+$/);         // dạng mới: Z1-HB3.4-0175 → HB
   return m?m[1]:null;
 }
 /* Đọc Assembly Position của 1 object (tái dùng ASSEMBLY_TIERS — KHÔNG đụng fetchQuantities) */
@@ -1192,7 +1195,7 @@ function apFilter(){
   if(!prefix){apRenderResults([]);if(countEl)countEl.textContent="";apSetStatus("Nhập prefix rồi bấm Tìm.");return;}
   var matches=[];
   _apCache.forEach(function(v,key){
-    if(v.apPrefix!=null && v.apPrefix===prefix){matches.push({key:key,ap:v.ap,name:v.name});} // so khớp tuyệt đối prefix đã trích, phân biệt hoa thường
+    if((v.apPrefix!=null && v.apPrefix===prefix) || (v.ap && v.ap.indexOf(prefix)===0)){matches.push({key:key,ap:v.ap,name:v.name});} // so khớp tuyệt đối prefix đã trích, phân biệt hoa thường
   });
   matches.sort(function(a,b){var x=a.ap.localeCompare(b.ap);return x!==0?x:String(a.name).localeCompare(String(b.name));});
   if(countEl)countEl.textContent=fmtN(matches.length)+" kết quả";
