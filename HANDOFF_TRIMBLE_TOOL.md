@@ -1,6 +1,6 @@
 # HANDOFF — Trimble Model Control Center
 
-**Cập nhật:** 09/10/2026, sau khi triển khai v2.5. Đây là file bàn giao để mở chat mới: đọc hết, rồi đối chiếu trạng thái repo và Trimble hiện tại. Bản handoff cũ 30/06/2026 được giữ tại `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\_handoff-backups\HANDOFF_TRIMBLE_TOOL-2026-10-09-before-update.md`.
+**Cập nhật:** 09/10/2026, sau khi triển khai v2.6. Đây là file bàn giao để mở chat mới: đọc hết, rồi đối chiếu trạng thái repo và Trimble hiện tại. Bản handoff cũ 30/06/2026 được giữ tại `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\_handoff-backups\HANDOFF_TRIMBLE_TOOL-2026-10-09-before-update.md`. Bản sao mới nhất của file này cũng nằm ở thư mục cha `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\HANDOFF_TRIMBLE_TOOL.md` để anh thấy ngay trong thư mục làm việc.
 
 ## Anh Thảo và quy ước làm việc
 
@@ -14,10 +14,10 @@ Anh yêu cầu **sau mỗi 15 thao tác làm việc có ý nghĩa**, lưu quá t
 
 - Repo có `.git`: `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\trimble-colorizer-pro\`.
 - GitHub: `https://github.com/heodaigia1983/trimble-colorizer-pro`, nhánh `main`.
-- Tool 1: `https://heodaigia1983.github.io/trimble-colorizer-pro/manifest.json`; trang v2.5: `https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=30`.
+- Tool 1: `https://heodaigia1983.github.io/trimble-colorizer-pro/manifest.json`; trang v2.6: `https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=31`.
 - Tool 2 riêng ở `progress-tracker/`; không sửa khi việc chỉ liên quan Tool 1.
 - IFC anh dùng: `C:\Users\Admin\Downloads\KC Gia Binh.ifc`. File này được chọn trong browser để tính thể tích; không có bằng chứng đã upload lên GitHub.
-- Code v2.5 ở `088de34488f78034574e1ff1a178fed7814d49c5` (09/10/2026 15:13 UTC+7); file handoff được đưa vào repo tại `a0b482f` sau đó. Kiểm tra lại HEAD, branch, remote, status và manifest trước khi tiếp tục.
+- Code v2.6 ở `7eb7755` (09/10/2026); v2.5 ở `088de34`. Kiểm tra lại HEAD, branch, remote, status và manifest trước khi tiếp tục.
 
 ## Diễn biến phiên 09/10/2026
 
@@ -33,10 +33,13 @@ Anh mở Tool A trên Trimble; chọn hàng chục rồi hàng nghìn cấu ki�
 | `2ff8bd2` | Đọc IFC gốc vì Viewer chỉ cấp model đã chuyển đổi. |
 | `bf7a6c3` | Khôi phục số liệu nhóm màu theo View từ trình duyệt. |
 | `088de34` | v2.5: lưu tóm tắt m³/tấn nhóm màu trong mô tả Trimble View. |
+| `7eb7755` | v2.6: thử lại đọc màu khi View tải xong; nếu chưa có ID vẫn hiện m³/tấn lưu trong View. |
 
 Anh đã thấy bảng **SL, KL (Tấn), V (m³), ρ (kg/m³)**. Mật độ thép mặc định là `7850 kg/m³` khi thiếu KL; tấn = kg/1000. Worker cộng thể tích có dấu từ tam giác IFC; về nguyên tắc phần rỗng của ống/hộp được trừ nếu lưới IFC biểu diễn đúng, không dùng thể tích hộp bao. Anh phản hồi “ok r em”, “hoạt động tốt” sau giai đoạn sửa thể tích. Chưa có bảng đối chiếu độc lập từng cấu kiện với Tekla, nên không khẳng định độ chính xác tuyệt đối.
 
 Vấn đề kế tiếp: Save View hôm nay, hôm sau mở lại vẫn phải xem nhóm vàng/xanh bao nhiêu tấn. Trước v2.5 dữ liệu chỉ nằm trong `localStorage` cùng browser. Anh hỏi Google/GitHub; phương án đã chọn là lưu tóm tắt nhỏ trong **Trimble View description**. Nếu Trimble không giữ được thì mới tính tiếp Google/cloud khác. Chưa có Google endpoint hoặc quyền xác thực cho việc này.
+
+16:36 cùng ngày, anh gửi ảnh v2.5: model còn dải vàng và xanh nhưng Slot 3 không có bảng màu, ô lựa chọn báo “Chưa chọn gì”. Chẩn đoán từ code: v2.5 gọi `getColoredObjects()` đúng một lần khi nhận View ID; nếu Viewer chưa tải xong màu thì ledger rỗng, vòng poll sau đó chỉ nhìn ID nên không thử lại. Đây là nguyên nhân có căn cứ từ source, nhưng chưa được xác nhận bằng log API của phiên Trimble anh. v2.6 thử lại tối đa 12 lần cách 5 giây, kiểm tra count và chữ ký tập cấu kiện, thử `getObjects` theo màu khi cần; đồng thời hiện bảng **số liệu lúc Save View** từ `MCCQ1` khi chưa lấy được ID, cho tick màu cộng m³/tấn nhưng chưa cho chọn đối tượng trên model. Nếu View không có `MCCQ1`, bảng tổng hợp không thể tự dựng từ ảnh màu; cần kiểm tra View đã được Save bằng tool v2.5 sau khi nạp IFC hay chưa.
 
 ## Kiến trúc và giới hạn hiện tại
 
@@ -65,3 +68,5 @@ SPM `.xsr` và GUID assembly Tekla **chưa được chứng minh** khớp Viewer
 Khi có yêu cầu mới: đọc file này → kiểm tra repo/phiên bản và bằng chứng mới từ anh → chẩn đoán → backup → sửa đúng phạm vi → tăng version/cache-bust → commit/push khi được giao → kiểm tra deploy → tách bạch kiểm tra công khai với thao tác Trimble thực. Không tuyên bố “đã chạy tốt trên Trimble” nếu chưa quan sát hoặc anh chưa xác nhận.
 
 **Mốc 09/10/2026:** v2.5 đã lên Pages, backup đầy đủ; còn chờ thử Save/Open View trong Trimble. Kinh nghiệm: Viewer có thể thiếu KL và chỉ cấp IFC chuyển đổi, cần IFC gốc để tính m³. localStorage không đủ cho mở View trên máy khác. Lưu Trimble View cần đọc lại xác nhận; khi model đổi cần đối chiếu tập cấu kiện để tránh hiển thị số cũ. Bắt đầu đếm 15 thao tác mới sau bản handoff này; các mốc sau ghi nối tiếp tại đây.
+
+**Mốc 09/10/2026 16:45, sau 15 thao tác:** Đã xem ảnh lỗi, đọc code và tài liệu Viewer API chính thức, tìm điểm chỉ đọc màu một lần, tạo tag backup `backup/mcc-before-view-recovery-v31-20261009` → `b4e47bd`, sửa `app.js`/`index.html`/`manifest.json`, kiểm tra cú pháp và diff, commit/push `7eb7755`. Backup ngay trước sửa handoff: `backup/mcc-v26-before-handoff-update-20261009` → `7eb7755`. Bài học: View ID có thể xuất hiện trước khi màu cấu kiện tải xong; cần retry có giới hạn và luôn hiện rõ khi chỉ đang xem số liệu lịch sử, chưa chọn được cấu kiện hiện tại. **Chưa có bằng chứng v2.6 chạy đúng trên phiên Trimble của anh**; chờ anh mở View và kiểm tra log/bảng. Bộ đếm 15 thao tác bắt đầu lại sau mốc này.
