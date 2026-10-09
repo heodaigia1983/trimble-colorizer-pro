@@ -1,6 +1,6 @@
 # Firebase cho Model Control Center
 
-**Firebase project:** `trimble-model-control-center` (tách khỏi Dashboard DDC). **Gói:** Spark miễn phí. **Ứng dụng:** Model Control Center GitHub Pages. **Đăng nhập:** Google, miền `heodaigia1983.github.io` được phép. Firestore rules chỉ cho tài khoản Google đã xác minh `heodaigia1983@gmail.com` đọc/ghi dưới `mccProjects/{trimbleProjectId}`. Không lưu service account, mật khẩu hoặc token vào repo.
+**Firebase project:** `trimble-model-control-center` (tách khỏi Dashboard DDC). **Gói:** Spark miễn phí. **Firestore:** `asia-southeast1` (Singapore), xác nhận trong Firebase Console. **Ứng dụng:** Model Control Center GitHub Pages. **Đăng nhập:** Google, miền `heodaigia1983.github.io` được phép. Firestore rules chỉ cho tài khoản Google đã xác minh `heodaigia1983@gmail.com` đọc/ghi dưới `mccProjects/{trimbleProjectId}`. Không lưu service account, mật khẩu hoặc token vào repo.
 
 ## Dữ liệu và cách dùng
 
