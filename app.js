@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.6
+ * Model Control Center v2.7
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -15,6 +15,7 @@ var BATCH_CLR   = 300;
 var PAINT_DELAY = 150;
 
 var _api = null;
+var _apiPromise = null;
 var _guids1 = [];
 var _guids2 = [];
 var _color1 = "#00FF00";
@@ -563,6 +564,21 @@ async function retryRecoverViewColors(viewId){
     log("✓ Khôi phục "+fmtN(ledger.size)+" cấu kiện màu từ View đang mở.","ok");
   }catch(e){if(_viewRecoveryTries===12)log("⚠ Chưa đọc được cấu kiện màu từ Viewer: "+e.message,"warn");}
 }
+async function retryRecoverCurrentColors(api){
+  if(_currentViewId||_colorLedger.size||_viewRecoveryTries>=12)return;
+  _viewRecoveryTries++;
+  try{
+    var ledger=await recoverLedgerFromViewer(api,new Map());
+    if(_currentViewId||!ledger.size){
+      if(_viewRecoveryTries===12)log("⚠ Không thấy Trimble View đang mở hoặc cấu kiện đã tô màu để khôi phục.","warn");
+      return;
+    }
+    _colorLedger=ledger;
+    _colorLedgerSummary=null;
+    await renderColorLedger();
+    log("✓ Đã đọc "+fmtN(ledger.size)+" cấu kiện màu đang hiện trên model.","ok");
+  }catch(e){if(_viewRecoveryTries===12)log("⚠ Không đọc được màu đang hiện trên model: "+e.message,"warn");}
+}
 async function loadLedger(viewId,viewSpec){
   var ledger=new Map(),cloudView=viewSpec;
   try{
@@ -609,8 +625,9 @@ async function initActiveView(api){
   try{
     var view=await api.view.getCurrentView();
     var id=view&&view.id;
-    if(id&&!_loadingView){_currentViewId=String(id);await loadLedger(_currentViewId,view);}
-  }catch(e){}
+    if(id&&!_loadingView){_currentViewId=String(id);log("Đang đọc nhóm màu từ Trimble View đã mở...","info");await loadLedger(_currentViewId,view);}
+    else if(!id)await retryRecoverCurrentColors(api);
+  }catch(e){log("⚠ Chưa đọc được View đang mở: "+e.message,"warn");}
   if(!_viewPollInterval){
     _viewPollInterval=setInterval(async function(){
       try{
@@ -621,13 +638,18 @@ async function initActiveView(api){
         if(_loadingView)return;
         if(id&&String(id)!==_currentViewId){_currentViewId=String(id);await loadLedger(_currentViewId,view);}
         else if(id&&!_colorLedger.size)await retryRecoverViewColors(id);
+        else if(!id&&!_colorLedger.size)await retryRecoverCurrentColors(_api);
       }catch(e){}
     },5000);
   }
 }
 
 /* ═══ API ═══ */
-async function getAPI(){if(_api)return _api;_api=await TrimbleConnectWorkspace.connect(window.parent,function(e,d){console.log("[T]",e,d);});log("Đã kết nối Trimble API.","ok");initActiveView(_api);return _api;}
+async function getAPI(){
+  if(_api)return _api;
+  if(!_apiPromise)_apiPromise=TrimbleConnectWorkspace.connect(window.parent,function(e,d){console.log("[T]",e,d);}).then(function(api){_api=api;log("Đã kết nối Trimble API.","ok");initActiveView(api);return api;}).catch(function(e){_apiPromise=null;throw e;});
+  return _apiPromise;
+}
 
 /* ═══ SPM (.xsr) input ═══ */
 function readText(f){return new Promise(function(ok,no){var r=new FileReader();r.onload=function(e){ok(String(e.target.result||""));};r.onerror=no;r.readAsText(f);});}
@@ -1787,8 +1809,18 @@ document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2
 document.getElementById("qtyBtn3").addEventListener("click",async function(){
   var resEl=document.getElementById("qtyResult3");
   if(!_colorLedger.size){
+    try{
+      var api=await getAPI(),view=await api.view.getCurrentView();
+      if(view&&view.id){
+        if(String(view.id)!==_currentViewId){_currentViewId=String(view.id);await loadLedger(_currentViewId,view);}
+        else await retryRecoverViewColors(view.id);
+      }else await retryRecoverCurrentColors(api);
+    }catch(e){log("⚠ Chưa đọc được màu từ View: "+e.message,"warn");}
+    await renderColorLedger();
+  }
+  if(!_colorLedger.size){
     resEl.classList.remove("hidden");
-    resEl.innerHTML='<div class="text-[10px] text-amber-700 p-2" style="background:#fff8e1;border:1px solid #f5d98b;border-radius:6px">Chưa có nhóm màu. Bấm <b>Apply</b> để lấy lựa chọn, chọn màu rồi bấm <b>OK</b> để tạo nhóm; thể tích và khối lượng nhóm sẽ hiện trong bảng màu.</div>';
+    resEl.innerHTML='<div class="text-[10px] text-amber-700 p-2" style="background:#fff8e1;border:1px solid #f5d98b;border-radius:6px">'+(_cloudViewQuantities.size?'Số liệu m³/tấn lúc lưu View đã hiện trong bảng màu bên trên. Viewer chưa trả đủ ID để chọn cấu kiện trên model.':_currentViewId?'Đang đọc cấu kiện màu từ View. Nếu vẫn trống, xem phần LOG cuối panel để biết nguyên nhân.':'Chưa đọc được nhóm màu từ View. Nếu vừa mở model, đợi tải xong rồi bấm lại; hoặc bấm Apply → chọn màu → OK để tạo nhóm mới.')+'</div>';
     return;
   }
   await renderColorLedger();
@@ -1805,4 +1837,5 @@ document.getElementById("ifcSourceInput").addEventListener("change",function(){c
   document.getElementById("apShowSelBtn").addEventListener("click",apSelectChecked);
   document.getElementById("apHideSelBtn").addEventListener("click",function(){apShowHideSelected(true);});
 })();
-renderViewList();
+getAPI().catch(function(e){log("⚠ Không kết nối được Trimble khi mở tool: "+e.message,"warn");});
+try{renderViewList();}catch(e){log("⚠ Trình duyệt chưa cho đọc Saved Views trên máy: "+e.message,"warn");}
