@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.8
+ * Model Control Center v2.9
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -27,6 +27,7 @@ var _map2 = null;
 var _noteMarkupId = {1:null,2:null,3:null};
 var MARKUP_COLOR = "#FF1493";
 var _colorLedger = new Map();
+var _ledgerRepainting = false;
 var _colorLedgerSummary = null;
 var _ledgerSelectedColors = new Set();
 var _ifcVolumeWorker = null;
@@ -1197,6 +1198,7 @@ async function renderColorLedger(){
   var groupVolume=0,groupWeight=0,missingVolume=0,missingWeight=0;
   chosen.forEach(function(c){var s=_colorLedgerSummary.get(c);if(!s){missingVolume++;missingWeight++;return;}groupVolume+=s.volume;groupWeight+=s.weight;missingVolume+=s.volumeMissing;missingWeight+=s.weightMissing;});
   html+='<div style="padding:7px 8px;background:#e8f0fe;border:1px solid #d0d3d8;font:11px sans-serif;color:#1a1c1e">Nhóm đã chọn: <b>'+chosen.length+'</b> / '+colors.length+' · Thể tích: <b>'+(chosen.length&&missingVolume===0?groupVolume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b> · Khối lượng: <b>'+(chosen.length&&missingWeight===0?(groupWeight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
+  html+='<button id="repaintLedgerBtn" type="button" onclick="repaintLedgerColors()" '+(_ledgerRepainting?'disabled':'')+' class="w-full mt-2 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer" style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">🎨 Tô lại tất cả màu sau Reset model</button>';
   el.innerHTML=html;
   el.classList.remove("hidden");
   if(expBtn)expBtn.classList.remove("hidden");
@@ -1216,14 +1218,45 @@ async function selectLedgerColorsOnViewer(){
   await api.viewer.setSelection({modelObjectIds:selection},"set");
   log(count?"✓ Đã chọn "+fmtN(count)+" cấu kiện theo màu trên model.":"Đã bỏ chọn các nhóm màu trên model.","ok");
 }
+async function repaintLedgerColors(colors){
+  if(_ledgerRepainting){log("Đang tô lại màu, chờ hoàn tất thao tác hiện tại.","warn");return;}
+  var groups=buildColorGroups();
+  var targets=Array.isArray(colors)?colors.filter(function(color){return groups.has(color);}):Array.from(groups.keys());
+  if(!targets.length){log("Không còn nhóm màu để tô lại; hãy mở View đã lưu hoặc khôi phục bản đang tô.","warn");return;}
+  _ledgerRepainting=true;
+  var button=document.getElementById("repaintLedgerBtn");
+  if(button)button.disabled=true;
+  var total=0,painted=0,failed=0,firstError="";
+  targets.forEach(function(color){groups.get(color).ids.forEach(function(ids){total+=ids.length;});});
+  try{
+    var api=await getAPI();
+    for(var color of targets){
+      var info=groups.get(color);
+      for(var entry of info.ids){
+        var modelId=entry[0],ids=entry[1].map(Number).filter(Number.isFinite);
+        for(var i=0;i<ids.length;i+=BATCH_CLR){
+          var chunk=ids.slice(i,i+BATCH_CLR);
+          try{await api.viewer.setObjectState({modelObjectIds:[{modelId:modelId,objectRuntimeIds:chunk}]},{color:color});painted+=chunk.length;}
+          catch(e){failed+=chunk.length;if(!firstError)firstError=e&&e.message?e.message:String(e);}
+          setProgress(Math.max(1,Math.round((painted+failed)/total*100)));
+          if(i+BATCH_CLR<ids.length)await sleep(PAINT_DELAY);
+        }
+      }
+    }
+    log(failed?"⚠ Đã tô lại "+fmtN(painted)+"/"+fmtN(total)+" cấu kiện; "+fmtN(failed)+" cấu kiện chưa tô được. "+firstError:"✓ Đã tô lại "+fmtN(painted)+" cấu kiện theo màu đã lưu.",failed?"warn":"ok");
+  }catch(e){log("✗ Không tô lại được màu: "+(e&&e.message?e.message:String(e)),"err");}
+  finally{_ledgerRepainting=false;if(button)button.disabled=false;setTimeout(function(){setProgress(0);},1200);}
+}
 async function toggleLedgerColor(color,checked){
   if(checked)_ledgerSelectedColors.add(color);else _ledgerSelectedColors.delete(color);
   try{await selectLedgerColorsOnViewer();}catch(e){log("✗ Không chọn được nhóm màu trên model: "+(e&&e.message?e.message:String(e)),"err");}
+  if(checked)await repaintLedgerColors([color]);
   await renderColorLedger();
 }
 async function selectLedgerColorOnViewer(color){
   _ledgerSelectedColors.clear();_ledgerSelectedColors.add(color);
   try{await selectLedgerColorsOnViewer();}catch(e){log("✗ Không chọn được nhóm màu trên model: "+(e&&e.message?e.message:String(e)),"err");}
+  await repaintLedgerColors([color]);
   await renderColorLedger();
 }
 

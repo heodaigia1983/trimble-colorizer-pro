@@ -1,6 +1,6 @@
 # HANDOFF — Trimble Model Control Center
 
-**Cập nhật:** 09/10/2026, sau khi đẩy mã v2.8 lên GitHub. Đây là file bàn giao để mở chat mới: đọc hết, rồi đối chiếu trạng thái repo, GitHub Pages và Trimble hiện tại. Bản handoff cũ 30/06/2026 được giữ tại `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\_handoff-backups\HANDOFF_TRIMBLE_TOOL-2026-10-09-before-update.md`. Bản sao mới nhất của file này cũng nằm ở thư mục cha `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\HANDOFF_TRIMBLE_TOOL.md` để anh thấy ngay trong thư mục làm việc.
+**Cập nhật:** 09/10/2026, sau khi sửa tô lại màu v2.9. Đây là file bàn giao để mở chat mới: đọc hết, rồi đối chiếu trạng thái repo, GitHub Pages và Trimble hiện tại. Bản handoff cũ 30/06/2026 được giữ tại `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\_handoff-backups\HANDOFF_TRIMBLE_TOOL-2026-10-09-before-update.md`. Bản sao mới nhất của file này cũng nằm ở thư mục cha `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\HANDOFF_TRIMBLE_TOOL.md` để anh thấy ngay trong thư mục làm việc.
 
 ## Anh Thảo và quy ước làm việc
 
@@ -14,7 +14,7 @@ Anh yêu cầu **sau mỗi 15 thao tác làm việc có ý nghĩa**, lưu quá t
 
 - Repo có `.git`: `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\trimble-colorizer-pro\`.
 - GitHub: `https://github.com/heodaigia1983/trimble-colorizer-pro`, nhánh `main`.
-- Tool 1: `https://heodaigia1983.github.io/trimble-colorizer-pro/manifest.json`; trang v2.8: `https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=33`.
+- Tool 1: `https://heodaigia1983.github.io/trimble-colorizer-pro/manifest.json`; trang v2.9: `https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=34`.
 - Tool 2 riêng ở `progress-tracker/`; không sửa khi việc chỉ liên quan Tool 1.
 - IFC anh dùng: `C:\Users\Admin\Downloads\KC Gia Binh.ifc`. File này được chọn trong browser để tính thể tích; không có bằng chứng đã upload lên GitHub.
 - Code v2.7 ở `1d9aed7` (09/10/2026); v2.6 ở `7eb7755`, v2.5 ở `088de34`. Kiểm tra lại HEAD, branch, remote, status và manifest trước khi tiếp tục.
@@ -81,3 +81,5 @@ Khi có yêu cầu mới: đọc file này → kiểm tra repo/phiên bản và 
 **Mốc 09/10/2026 18:48 — v2.8 đã triển khai:** Commit tính năng `46bb17a` đã push lên `main`; GitHub Pages báo `built` cho đúng commit này. HTTP công khai trả 200 cho `index.html?v=33`, `manifest.json` trỏ `v=33`, và `mcc-cloud.js`. Firebase riêng `trimble-model-control-center` đã sẵn sàng. `FIREBASE_MCC.md` ghi kiến trúc, quyền, giới hạn và cách thử. Sửa thêm lỗi quan trọng trước khi push: khi mở dữ liệu cloud phải đổi external ID sang runtime ID hiện tại; nếu thiếu ID thì chỉ xem số liệu đã lưu, không tô sai cấu kiện hoặc dùng selection cũ. **Chưa xác minh đăng nhập, đồng bộ và mở lại View trong Trimble thực; cần anh thử một nhóm nhỏ, Save View, mở lại trên phiên/máy khác và báo log nếu lỗi.** Khi mở chat mới, đọc file này cùng `FIREBASE_MCC.md`, kiểm tra repo/Pages hiện tại trước khi kết luận. Kinh nghiệm: kết quả Pages chỉ chứng minh file đã phát hành; không thay cho thao tác Trimble và số liệu m³/tấn thực. Bộ đếm 15 thao tác bắt đầu lại sau mốc này.
 
 **Bổ sung 18:50:** Firebase Console mục Firestore Data hiển thị vùng `asia-southeast1` (Singapore), đã ghi vào `FIREBASE_MCC.md`. Sau commit tính năng, commit handoff `d1ebb67` cũng đã push; kiểm tra `main` và Pages theo commit mới nhất trước khi báo trạng thái.
+
+**Mốc 09/10/2026 19:19 — tô lại màu sau Reset model:** Ảnh anh gửi cho thấy bảng nhóm màu vẫn còn sau khi dùng nút `Reset model` trên thanh Trimble, nhưng màu model mất. Nguyên nhân trong `app.js`: checkbox và ô màu của bảng chỉ gọi `setSelection`, không gọi `setObjectState` để tô lại. Backup GitHub trước sửa: tag `backup/mcc-v28-before-repaint-after-reset-20261009` → `a8cd2c8`, đã push và xác nhận trên origin. Sửa đúng bảng nhóm màu: tích checkbox hoặc bấm ô màu thì tô lại nhóm đó, thêm nút `Tô lại tất cả màu sau Reset model`; chỉ gửi màu cho các runtime ID trong `_colorLedger`, không reset hay hiện lại cấu kiện khác. Tool Reset riêng của MCC vẫn xóa ledger theo hành vi cũ, nên muốn tô lại sau nút này phải mở View đã lưu hoặc khôi phục draft. Tăng v2.9/cache `v=34`; chờ commit/push và kiểm tra Pages, rồi anh thử trên model thật. Kinh nghiệm: cần phân biệt `Reset model` của Trimble (xóa trạng thái hiển thị) với Reset của MCC (xóa cả ledger).
