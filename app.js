@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.1
+ * Model Control Center v2.2
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -114,7 +114,7 @@ function buildLedgerMapForColor(color){
   var info=groups.get(color);
   if(!info) return null;
   var map=new Map();
-  info.ids.forEach(function(ids,modelId){map.set(modelId,ids.slice());});
+  info.ids.forEach(function(ids,modelId){map.set(modelId,ids.map(Number).filter(Number.isFinite));});
   return map;
 }
 function buildLedgerMapAll(){
@@ -124,7 +124,8 @@ function buildLedgerMapAll(){
     var obj=splitObjectKey(key);
     var ids=map.get(obj.modelId);
     if(!ids){ids=[];map.set(obj.modelId,ids);}
-    ids.push(obj.runtimeId);
+    var runtimeId=Number(obj.runtimeId);
+    if(Number.isFinite(runtimeId))ids.push(runtimeId);
   }
   return map;
 }
@@ -157,6 +158,29 @@ async function getIfcBlob(api,modelId){
   }
   throw new Error("Trimble không trả nội dung IFC gốc cho model "+modelId+".");
 }
+async function convertObjectIdsSafely(api,modelId,items){
+  var resolved=new Map(),failures=0,firstError="",maxFailures=256,batchSize=200;
+  async function convertChunk(chunk){
+    if(!chunk.length)return;
+    if(failures>=maxFailures){chunk.forEach(function(item){resolved.set(item.key,null);});return;}
+    try{
+      var ids=await api.viewer.convertToObjectIds(modelId,chunk.map(function(item){return Number(item.runtimeId);}));
+      chunk.forEach(function(item,index){resolved.set(item.key,Array.isArray(ids)?ids[index]||null:null);});
+    }catch(error){
+      failures++;
+      if(!firstError)firstError=error&&error.message?error.message:String(error);
+      if(chunk.length===1||failures>=maxFailures){chunk.forEach(function(item){resolved.set(item.key,null);});return;}
+      var middle=Math.floor(chunk.length/2);
+      await convertChunk(chunk.slice(0,middle));
+      await convertChunk(chunk.slice(middle));
+    }
+  }
+  for(var i=0;i<items.length;i+=batchSize){
+    if(failures>=maxFailures){items.slice(i).forEach(function(item){resolved.set(item.key,null);});break;}
+    await convertChunk(items.slice(i,i+batchSize));
+  }
+  return {ids:resolved,failures:failures,error:firstError};
+}
 async function fetchIfcVolumes(api,map){
   var missing=[];
   map.forEach(function(ids,mid){ids.forEach(function(rid){var key=makeObjectKey(mid,rid);if(!_ifcVolumeCache.has(key))missing.push({modelId:mid,runtimeId:rid,key:key});});});
@@ -165,14 +189,16 @@ async function fetchIfcVolumes(api,map){
   var worker=getVolumeWorker();
   for(var entry of byModel){
     var modelId=entry[0],items=entry[1],blob=await getIfcBlob(api,modelId);
-    var objectIds=await api.viewer.convertToObjectIds(modelId,items.map(function(x){return x.runtimeId;}));
     var guids=[];
+    var converted=await convertObjectIdsSafely(api,modelId,items);
+    if(converted.failures)log("GUID IFC khớp được "+items.filter(function(item){return !!converted.ids.get(item.key);}).length+"/"+items.length+" cấu kiện; một số ID không có GUID và được bỏ qua.","warn");
     for(var i=0;i<items.length;i++){
-      var raw=objectIds&&objectIds[i];if(Array.isArray(raw))raw=raw[0];
+      var raw=converted.ids.get(items[i].key);
       var fmt=detectFmt(raw),guid=fmt==="uuid"||fmt==="nd"?uuid2ifc(raw):fmt==="ifc"?raw:null;
       items[i].guid=guid;
       if(guid)guids.push(guid);
     }
+    if(!guids.length){items.forEach(function(item){_ifcVolumeCache.set(item.key,null);});continue;}
     var requestId=++_ifcVolumeRequestId;
     var results=await new Promise(function(resolve,reject){_ifcVolumeRequests.set(requestId,{resolve:resolve,reject:reject});worker.postMessage({action:"volumes",id:requestId,sourceKey:modelId,blob:blob,guids:guids});});
     var resultMap=new Map(results.map(function(r){return[r.guid,r.volumeM3];}));
@@ -1020,7 +1046,7 @@ async function saveView(){
       name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());
       if(inp)inp.value=name;
     }
-    var c=await api.view.createView({name:name,description:"Model Control Center v2.1 | Le Van Thao"});
+    var c=await api.view.createView({name:name,description:"Model Control Center v2.2 | Le Van Thao"});
     if(!c||!c.id)throw new Error("No view ID.");
     await api.view.updateView({id:c.id});
     await api.view.selectView(c.id);
