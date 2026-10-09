@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.0
+ * Model Control Center v2.1
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -1020,7 +1020,7 @@ async function saveView(){
       name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());
       if(inp)inp.value=name;
     }
-    var c=await api.view.createView({name:name,description:"Model Control Center v2.0 | Le Van Thao"});
+    var c=await api.view.createView({name:name,description:"Model Control Center v2.1 | Le Van Thao"});
     if(!c||!c.id)throw new Error("No view ID.");
     await api.view.updateView({id:c.id});
     await api.view.selectView(c.id);
