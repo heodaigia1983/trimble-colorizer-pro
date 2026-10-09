@@ -27,6 +27,11 @@ var _noteMarkupId = {1:null,2:null,3:null};
 var MARKUP_COLOR = "#FF1493";
 var _colorLedger = new Map();
 var _colorLedgerSummary = null;
+var _ledgerSelectedColors = new Set();
+var _ifcVolumeWorker = null;
+var _ifcVolumeRequests = new Map();
+var _ifcVolumeRequestId = 0;
+var _ifcVolumeCache = new Map();
 var _currentViewId = null;
 var _ledgerViewId = null;
 var _viewPollInterval = null;
@@ -56,6 +61,19 @@ function getNoteForColor(hex){
     }
   }
   return note;
+}
+function getDensityForColor(hex){
+  var density=null;
+  for(var entry of _colorLedger){
+    if(entry[1]&&entry[1].color===hex&&Number.isFinite(Number(entry[1].density))&&Number(entry[1].density)>0)density=Number(entry[1].density);
+  }
+  return density;
+}
+function setDensityForColor(hex,value){
+  var density=Number(value);
+  if(!Number.isFinite(density)||density<=0)return;
+  for(var entry of _colorLedger){if(entry[1]&&entry[1].color===hex)entry[1].density=density;}
+  saveLedger();
 }
 function updateColorNoteForColor(hex, note){
   for(var entry of _colorLedger){
@@ -110,20 +128,82 @@ function buildLedgerMapAll(){
   }
   return map;
 }
+function getVolumeWorker(){
+  if(!_ifcVolumeWorker){
+    _ifcVolumeWorker=new Worker("ifc-volume-worker.js",{type:"module"});
+    _ifcVolumeWorker.onmessage=function(event){
+      var data=event.data||{},pending=_ifcVolumeRequests.get(data.id);
+      if(!pending)return;
+      if(data.type==="progress"){if(pending.progress)pending.progress(data.done,data.total);return;}
+      _ifcVolumeRequests.delete(data.id);
+      if(data.type==="error")pending.reject(new Error(data.message||"Không tính được thể tích IFC."));
+      else pending.resolve(data.results||[]);
+    };
+    _ifcVolumeWorker.onerror=function(event){
+      _ifcVolumeRequests.forEach(function(p){p.reject(new Error(event.message||"Worker tính thể tích bị lỗi."));});
+      _ifcVolumeRequests.clear();_ifcVolumeWorker=null;
+    };
+  }
+  return _ifcVolumeWorker;
+}
+async function getIfcBlob(api,modelId){
+  var file=await api.viewer.getLoadedModel(modelId),blob=file&&file.blob;
+  if(blob instanceof Blob)return blob;
+  if(typeof blob==="string"){
+    var raw=blob.indexOf("base64,")>=0?blob.slice(blob.indexOf("base64,")+7):blob;
+    var binary=atob(raw),bytes=new Uint8Array(binary.length);
+    for(var i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    return new Blob([bytes],{type:"application/ifc"});
+  }
+  throw new Error("Trimble không trả nội dung IFC gốc cho model "+modelId+".");
+}
+async function fetchIfcVolumes(api,map){
+  var missing=[];
+  map.forEach(function(ids,mid){ids.forEach(function(rid){var key=makeObjectKey(mid,rid);if(!_ifcVolumeCache.has(key))missing.push({modelId:mid,runtimeId:rid,key:key});});});
+  var byModel=new Map();
+  missing.forEach(function(item){var a=byModel.get(item.modelId);if(!a){a=[];byModel.set(item.modelId,a);}a.push(item);});
+  var worker=getVolumeWorker();
+  for(var entry of byModel){
+    var modelId=entry[0],items=entry[1],blob=await getIfcBlob(api,modelId);
+    var objectIds=await api.viewer.convertToObjectIds(modelId,items.map(function(x){return x.runtimeId;}));
+    var guids=[];
+    for(var i=0;i<items.length;i++){
+      var raw=objectIds&&objectIds[i];if(Array.isArray(raw))raw=raw[0];
+      var fmt=detectFmt(raw),guid=fmt==="uuid"||fmt==="nd"?uuid2ifc(raw):fmt==="ifc"?raw:null;
+      items[i].guid=guid;
+      if(guid)guids.push(guid);
+    }
+    var requestId=++_ifcVolumeRequestId;
+    var results=await new Promise(function(resolve,reject){_ifcVolumeRequests.set(requestId,{resolve:resolve,reject:reject});worker.postMessage({action:"volumes",id:requestId,sourceKey:modelId,blob:blob,guids:guids});});
+    var resultMap=new Map(results.map(function(r){return[r.guid,r.volumeM3];}));
+    items.forEach(function(item){_ifcVolumeCache.set(item.key,item.guid&&resultMap.has(item.guid)?resultMap.get(item.guid):null);});
+  }
+  return _ifcVolumeCache;
+}
 async function rebuildColorLedgerSummary(){
   _colorLedgerSummary = new Map();
   var groups=buildColorGroups();
+  var api=null;
+  try{api=await getAPI();}catch(e){}
   for(var entry of groups){
     var color=entry[0], info=entry[1];
     var qty=0;
     info.ids.forEach(function(ids){qty+=ids.length;});
-    var weight=0;
+    var density=getDensityForColor(color);
+    var weight=0,volume=0,weightMissing=qty,volumeMissing=qty;
     try{
-      var api=await getAPI();
-      var q=await fetchQuantities(api, buildLedgerMapForColor(color));
-      q.groups.forEach(function(g){weight += g.weight;});
-    }catch(e){weight=0;}
-    _colorLedgerSummary.set(color, {count:qty, weight:weight, note:info.note});
+      if(api){
+        var q=await fetchQuantities(api, buildLedgerMapForColor(color));
+        weight=0;volume=0;weightMissing=0;volumeMissing=qty;
+        q.groups.forEach(function(g){weight+=g.weight;weightMissing+=g.weightMissing;});
+        weightMissing+=q.apiMiss||0;
+        var volumeMap=await fetchIfcVolumes(api,buildLedgerMapForColor(color));
+        volume=0;volumeMissing=0;
+        buildLedgerMapForColor(color).forEach(function(ids,mid){ids.forEach(function(rid){var v=volumeMap.get(makeObjectKey(mid,rid));if(v==null)volumeMissing++;else volume+=v;});});
+        if(density&&weightMissing===qty&&volumeMissing===0){weight=volume*density;weightMissing=0;}
+      }
+    }catch(e){volumeMissing=qty;log("Không tính được chỉ số nhóm "+color+": "+(e&&e.message?e.message:String(e)),"warn");}
+    _colorLedgerSummary.set(color, {count:qty, weight:weight, volume:volume, weightMissing:weightMissing, volumeMissing:volumeMissing, density:density, note:info.note});
   }
 }
 
@@ -280,7 +360,7 @@ function deserializeColorLedger(raw){
     arr.forEach(function(item){
       if(!item||!item.key) return;
       var value=item.value||{};
-      map.set(item.key,{color:String(value.color||"").trim(), note:String(value.note||"").trim()});
+      map.set(item.key,{color:String(value.color||"").trim(), note:String(value.note||"").trim(), density:Number(value.density)>0?Number(value.density):null});
     });
     return map;
   }
@@ -288,7 +368,7 @@ function deserializeColorLedger(raw){
     Object.keys(arr).forEach(function(key){
       var value=arr[key]||{};
       if(typeof value==="object"){
-        map.set(key,{color:String(value.color||"").trim(), note:String(value.note||"").trim()});
+        map.set(key,{color:String(value.color||"").trim(), note:String(value.note||"").trim(), density:Number(value.density)>0?Number(value.density):null});
       }
     });
     return map;
@@ -453,6 +533,7 @@ async function paintSlot(slot){
 var BATCH_PROP = 200;
 var QTY_PATTERNS = {
   weight: /NetWeight|GrossWeight|^Weight$|^Assembly\/Cast unit weight$/i,
+  volume: /NetVolume|GrossVolume|^Volume$/i,
   length: /^Length$/i,
   profile: /^PROFILE$|profile|member.*size|section/i,
   area: /NetArea|GrossArea|^Area$/i
@@ -480,15 +561,15 @@ var AP_TYPE_MAP = {
 
 /* Gom theo tên cấu kiện Assembly: { count, length, weight } cho mỗi nhóm */
 async function fetchQuantities(api, map){
-  var groups=new Map(), hit=0, miss=0;
+  var groups=new Map(), hit=0, miss=0, apiMiss=0;
   for(var entry of map){
     var mid=entry[0], ids=entry[1];
     for(var i=0;i<ids.length;i+=BATCH_PROP){
       var chunk=ids.slice(i,i+BATCH_PROP);
       var props;
       try{ props = await api.viewer.getObjectProperties(mid, chunk); }
-      catch(e){ miss+=chunk.length; continue; }
-      if(!Array.isArray(props)){ miss+=chunk.length; continue; }
+      catch(e){ miss+=chunk.length;apiMiss+=chunk.length;continue; }
+      if(!Array.isArray(props)){ miss+=chunk.length;apiMiss+=chunk.length;continue; }
       props.forEach(function(op){
         if(!window.__diagLogged){
           window.__diagLogged=true;
@@ -504,7 +585,7 @@ async function fetchQuantities(api, map){
             });
           }
         }
-        var weight=null, length=null, profile=null, area=null, found=false;
+        var weight=null, length=null, profile=null, area=null, volume=null, found=false;
         var assemblyTierVals=new Array(ASSEMBLY_TIERS.length).fill(null);
         if(Array.isArray(op.properties)){
           op.properties.forEach(function(ps){
@@ -521,6 +602,7 @@ async function fetchQuantities(api, map){
               var v=parseFloat(p.value);
               if(isNaN(v))return;
               if(weight==null && QTY_PATTERNS.weight.test(p.name)){weight=v;found=true;}
+              if(volume==null && QTY_PATTERNS.volume.test(p.name))volume=v;
               if(length==null && QTY_PATTERNS.length.test(p.name)){length=v;found=true;}
               if(QTY_PATTERNS.area.test(p.name)){area=(area||0)+v;}
             });
@@ -530,16 +612,17 @@ async function fetchQuantities(api, map){
         if(found)hit++; else miss++;
         var key=assembly||"Không xác định";
         var g=groups.get(key);
-        if(!g){g={count:0,length:null,weight:0,profile:null,area:null};groups.set(key,g);}
+        if(!g){g={count:0,length:null,weight:0,volume:0,weightMissing:0,volumeMissing:0,profile:null,area:null};groups.set(key,g);}
         g.count+=1;
         if(g.length==null && length!=null)g.length=length;
-        if(weight!=null)g.weight+=weight;
+        if(weight!=null)g.weight+=weight;else g.weightMissing++;
+        if(volume!=null)g.volume+=volume;else g.volumeMissing++;
         if(g.profile==null && profile!=null)g.profile=profile;
         if(area!=null)g.area=(g.area||0)+area;
       });
     }
   }
-  return {groups:groups, hit:hit, miss:miss};
+  return {groups:groups, hit:hit, miss:miss, apiMiss:apiMiss};
 }
 
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c];});}
@@ -673,7 +756,7 @@ async function paintSelection(){
       done+=entry[1].length;
       entry[1].forEach(function(rid){
         var key=makeObjectKey(entry[0],rid);
-        _colorLedger.set(key,{color:_color3,note:note});
+        _colorLedger.set(key,{color:_color3,note:note,density:getDensityForColor(_color3)});
       });
     }
     log("✓ Đã tô "+fmtN(done)+" cấu kiện.","ok");
@@ -790,10 +873,13 @@ async function renderColorLedger(){
   var colors=Array.from(groups.keys()).sort();
   var html='<table style="width:100%;border-collapse:collapse">'
     +'<thead><tr style="background:#f0f2f5;position:sticky;top:0;z-index:2">'
+    +'<th style="text-align:center;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">✓</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">STT</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Màu</th>'
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">SL</th>'
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">KL (Tấn)</th>'
+    +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">V (m³)</th>'
+    +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">ρ (kg/m³)</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ghi chú</th>'
     +'</tr></thead><tbody>';
   colors.forEach(function(color,idx){
@@ -801,22 +887,33 @@ async function renderColorLedger(){
     var summary=_colorLedgerSummary&&_colorLedgerSummary.get(color);
     var count=info?Array.from(info.ids.values()).reduce(function(acc,ids){return acc+(Array.isArray(ids)?ids.length:0);},0):0;
     var weight=summary?summary.weight:0;
+    var volume=summary?summary.volume:0;
+    var selected=_ledgerSelectedColors.has(color);
+    var density=summary&&summary.density?summary.density:"";
     var note=summary?summary.note:(info?info.note||"":"");
     var bg=idx%2===0?"#ffffff":"#f7f8fa";
     html+='<tr style="background:'+bg+'">'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:center"><input type="checkbox" '+(selected?'checked':'')+' onchange="toggleLedgerColor(this.dataset.color,this.checked)" data-color="'+color+'" aria-label="Chọn nhóm màu '+color+'"/></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;font-size:10.5px;color:#1a1c1e">'+(idx+1)+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea">'
       +'<div style="width:16px;height:16px;border-radius:3px;background:'+color+';border:1px solid rgba(0,0,0,0.12)"></div></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+fmtN(count)+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.weightMissing===0?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.volumeMissing===0?volume.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right"><input type="number" min="0" step="1" data-color="'+color+'" value="'+density+'" placeholder="Nhập" title="Khối lượng riêng kg/m³; dùng khi IFC không có KL" onchange="setDensityForColor(this.dataset.color,this.value);renderColorLedger()" style="width:68px;text-align:right;border:1px solid #d0d3d8;border-radius:4px;padding:3px"/></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-color="'+color+'" value="'+escapeHtml(note)+'" placeholder="Ghi chú..." onblur="updateColorNoteForColor(this.dataset.color,this.value.trim())" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
   });
   html+='</tbody></table>';
+  var chosen=colors.filter(function(c){return _ledgerSelectedColors.has(c);});
+  var groupVolume=0,groupWeight=0,missingVolume=0,missingWeight=0;
+  chosen.forEach(function(c){var s=_colorLedgerSummary.get(c);if(!s){missingVolume++;missingWeight++;return;}groupVolume+=s.volume;groupWeight+=s.weight;missingVolume+=s.volumeMissing;missingWeight+=s.weightMissing;});
+  html+='<div style="padding:7px 8px;background:#e8f0fe;border:1px solid #d0d3d8;font:11px sans-serif;color:#1a1c1e">Nhóm đã chọn: <b>'+chosen.length+'</b> / '+colors.length+' · Thể tích: <b>'+(chosen.length&&missingVolume===0?groupVolume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b> · Khối lượng: <b>'+(chosen.length&&missingWeight===0?(groupWeight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
   el.innerHTML=html;
   el.classList.remove("hidden");
   if(expBtn)expBtn.classList.remove("hidden");
 }
+function toggleLedgerColor(color,checked){if(checked)_ledgerSelectedColors.add(color);else _ledgerSelectedColors.delete(color);renderColorLedger();}
 
 async function exportLedger(){
   await rebuildColorLedgerSummary();
