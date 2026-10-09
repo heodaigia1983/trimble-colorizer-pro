@@ -185,8 +185,8 @@
 <div style="margin:0 0 12px;padding:12px 16px;background:#ffffff;border-left:4px solid #1a73e8;border-radius:12px;box-shadow:0 2px 10px rgba(20,30,60,0.04);display:flex;align-items:center;justify-content:space-between">
   <div>
     <div style="font-size:11px;letter-spacing:0.5px;color:#9aa3b2;font-weight:600;text-transform:uppercase">Phiên bản hiện tại</div>
-    <div style="font-size:20px;font-weight:800;color:#1a1a2e">v2.7</div>
-    <div style="font-size:10px;color:#7b8088;margin-top:2px">Cập nhật: 09/10/2026 · 17:30 (UTC+7)</div>
+    <div style="font-size:20px;font-weight:800;color:#1a1a2e">v2.8</div>
+    <div style="font-size:10px;color:#7b8088;margin-top:2px">Cập nhật: 09/10/2026 · 18:45 (UTC+7)</div>
   </div>
   <span style="display:inline-flex;align-items:center;gap:6px;background:#e8f8ee;color:#1c9a5b;font-weight:700;border-radius:20px;padding:5px 12px;font-size:12px">
     <span style="width:7px;height:7px;border-radius:50%;background:#1c9a5b;display:inline-block"></span>Hoạt động</span>
@@ -536,12 +536,27 @@
   </div>
 </div>
 
+<div class="mt-3 p-2.5 rounded-lg" style="border:1px solid #c5d5f7;background:#f6f9ff">
+  <div class="text-[11px] font-semibold" style="color:#1a73e8">☁ Dashboard Firebase · Model Control Center</div>
+  <div class="text-[10px] mt-1">Dự án Trimble: <span id="cloudProject">Đang kết nối...</span></div>
+  <div id="cloudStatus" class="text-[10px] mt-1">Đang khởi tạo Firebase...</div>
+  <div class="flex gap-1.5 mt-2">
+    <button id="cloudLogin" type="button" class="px-2 py-1.5 rounded text-[10.5px] font-semibold" style="background:#1a73e8;color:white">Đăng nhập Google để đồng bộ</button>
+    <button id="cloudLogout" type="button" hidden class="px-2 py-1.5 rounded text-[10.5px]" style="border:1px solid #c5d5f7">Đăng xuất</button>
+    <button id="cloudRefresh" type="button" class="px-2 py-1.5 rounded text-[10.5px]" style="border:1px solid #c5d5f7">↻ Xem dữ liệu</button>
+  </div>
+  <input id="cloudFile" type="file" accept=".xlsx,.xls,.csv,.xsr,.spm,.txt" hidden>
+  <button id="cloudChooseFile" type="button" class="mt-2 px-2 py-1.5 rounded text-[10px]" style="border:1px solid #c5d5f7">Lưu thêm file Excel/nguồn lên Firebase</button>
+  <div class="text-[9px] mt-1" style="color:#7b8088">Tô màu và file nhập được lưu tự động sau khi đăng nhập. IFC gốc chỉ đọc trên máy anh.</div>
+  <div id="cloudDashboard" class="text-[10px] mt-2 max-h-64 overflow-y-auto" style="color:#3c4043"></div>
+</div>
+
 <div class="h-px my-3" style="background:#e2e5ea"></div>
 
 <div class="text-[10px] font-semibold tracking-[0.06em] uppercase mb-1" style="color:#1a73e8">Log</div>
 <div id="log"></div>
 
-<div class="mt-3 text-[10px] text-center" style="color:#9aa0a6">Model Control Center v2.7 · Le Van Thao</div>
+<div class="mt-3 text-[10px] text-center" style="color:#9aa0a6">Model Control Center v2.8 · Le Van Thao</div>
 
 <script>
   function toggleAccordion(headerEl) {
@@ -553,6 +568,7 @@
     if (content) content.classList.toggle('hidden', isActive);
   }
 </script>
-<script src="app.js?v=32"></script>
+<script src="app.js?v=33"></script>
+<script type="module" src="mcc-cloud.js?v=33" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {
   "title": "Model Control Center",
   "icon": "https://heodaigia1983.github.io/trimble-colorizer-pro/icon.png",
-  "url": "https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=32",
-  "description": "Model Control Center v2.7 · Cập nhật 09/10/2026 17:30 UTC+7 · Tự kết nối Trimble để đọc nhóm màu View",
+  "url": "https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=33",
+  "description": "Model Control Center v2.8 · Cập nhật 09/10/2026 18:45 UTC+7 · Firebase lưu màu, file nhập và dashboard theo View",
   "enabled": true
 }
