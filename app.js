@@ -895,8 +895,9 @@ async function renderColorLedger(){
     html+='<tr style="background:'+bg+'">'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:center"><input type="checkbox" '+(selected?'checked':'')+' onchange="toggleLedgerColor(this.dataset.color,this.checked)" data-color="'+color+'" aria-label="Chọn nhóm màu '+color+'"/></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;font-size:10.5px;color:#1a1c1e">'+(idx+1)+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea">'
-      +'<div style="width:16px;height:16px;border-radius:3px;background:'+color+';border:1px solid rgba(0,0,0,0.12)"></div></td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:center">'
+      +'<button type="button" onclick="selectLedgerColorOnViewer(\''+color+'\')" title="Chọn nhóm màu này trên model" aria-label="Chọn nhóm màu '+color+' trên model" style="border:0;background:transparent;padding:2px;cursor:pointer">'
+      +'<span style="display:block;width:18px;height:18px;border-radius:3px;background:'+color+';border:1px solid rgba(0,0,0,0.18)"></span></button></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+fmtN(count)+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.weightMissing===0?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.volumeMissing===0?volume.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
@@ -913,7 +914,31 @@ async function renderColorLedger(){
   el.classList.remove("hidden");
   if(expBtn)expBtn.classList.remove("hidden");
 }
-function toggleLedgerColor(color,checked){if(checked)_ledgerSelectedColors.add(color);else _ledgerSelectedColors.delete(color);renderColorLedger();}
+async function selectLedgerColorsOnViewer(){
+  var byModel=new Map();
+  _ledgerSelectedColors.forEach(function(color){
+    var map=buildLedgerMapForColor(color);if(!map)return;
+    map.forEach(function(ids,modelId){
+      var set=byModel.get(modelId);if(!set){set=new Set();byModel.set(modelId,set);}
+      ids.forEach(function(id){set.add(id);});
+    });
+  });
+  var selection=[],count=0;
+  byModel.forEach(function(ids,modelId){var objectRuntimeIds=Array.from(ids);count+=objectRuntimeIds.length;selection.push({modelId:modelId,objectRuntimeIds:objectRuntimeIds});});
+  var api=await getAPI();
+  await api.viewer.setSelection({modelObjectIds:selection},"set");
+  log(count?"✓ Đã chọn "+fmtN(count)+" cấu kiện theo màu trên model.":"Đã bỏ chọn các nhóm màu trên model.","ok");
+}
+async function toggleLedgerColor(color,checked){
+  if(checked)_ledgerSelectedColors.add(color);else _ledgerSelectedColors.delete(color);
+  try{await selectLedgerColorsOnViewer();}catch(e){log("✗ Không chọn được nhóm màu trên model: "+(e&&e.message?e.message:String(e)),"err");}
+  await renderColorLedger();
+}
+async function selectLedgerColorOnViewer(color){
+  _ledgerSelectedColors.clear();_ledgerSelectedColors.add(color);
+  try{await selectLedgerColorsOnViewer();}catch(e){log("✗ Không chọn được nhóm màu trên model: "+(e&&e.message?e.message:String(e)),"err");}
+  await renderColorLedger();
+}
 
 async function exportLedger(){
   await rebuildColorLedgerSummary();
