@@ -72,7 +72,7 @@ function placedGeometryVolume(api,modelId,placed){
 }
 
 function elementVolume(api,modelId,expressId){
-  var mesh=api.GetFlatMesh(modelId,expressId),signed=0;
+  var mesh=api.GetFlatMesh(modelId,expressId,false),signed=0;
   try{
     if(!mesh||!mesh.geometries||!mesh.geometries.size())return null;
     for(var i=0;i<mesh.geometries.size();i++){
@@ -89,6 +89,7 @@ async function openModel(sourceKey,blob){
   if(!(blob instanceof Blob))throw new Error("Trimble Viewer không cung cấp nội dung IFC dạng Blob.");
   var buffer=await blob.arrayBuffer();
   var bytes=new Uint8Array(buffer);
+  if(!/^ISO-10303-21;/i.test(new TextDecoder("utf-8").decode(bytes.subarray(0,32)).trimStart()))throw new Error("Nguồn đã chọn không phải file IFC gốc.");
   var modelId=api.OpenModel(bytes);
   if(modelId<0)throw new Error("WebIFC không mở được model nguồn.");
   var header=new TextDecoder("utf-8").decode(bytes.subarray(0,Math.min(bytes.length,8*1024*1024)));
@@ -106,11 +107,12 @@ self.onmessage=async function(event){
   if(data.action!=="volumes")return;
   try{
     var state=await openModel(data.sourceKey,data.blob);
-    var api=state.api,modelId=state.modelId,results=[];
+    var api=state.api,modelId=state.modelId,results=[],matched=0;
     var guids=data.guids||[];
     for(var i=0;i<guids.length;i++){
       var guid=guids[i];
       var expressId=api.GetExpressIdFromGuid(modelId,guid);
+      if(expressId!=null)matched++;
       var nativeVolume=expressId!=null?elementVolume(api,modelId,Number(expressId)):null;
       var volume=nativeVolume==null?null:nativeVolume*Math.pow(state.toMetres,3);
       results.push({guid:guid,volumeM3:volume});
@@ -118,6 +120,7 @@ self.onmessage=async function(event){
         self.postMessage({id:data.id,type:"progress",done:i+1,total:guids.length});
       }
     }
+    if(guids.length&&!matched)throw new Error("Không GUID nào của nhóm khớp file IFC đã chọn. Kiểm tra đúng file model trên Trimble.");
     self.postMessage({id:data.id,type:"result",results:results});
   }catch(error){
     self.postMessage({id:data.id,type:"error",message:error&&error.message?error.message:String(error)});

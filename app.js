@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.2
+ * Model Control Center v2.3
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -32,6 +32,7 @@ var _ifcVolumeWorker = null;
 var _ifcVolumeRequests = new Map();
 var _ifcVolumeRequestId = 0;
 var _ifcVolumeCache = new Map();
+var _ifcSourceFile = null;
 var _currentViewId = null;
 var _ledgerViewId = null;
 var _viewPollInterval = null;
@@ -131,7 +132,7 @@ function buildLedgerMapAll(){
 }
 function getVolumeWorker(){
   if(!_ifcVolumeWorker){
-    _ifcVolumeWorker=new Worker("ifc-volume-worker.js",{type:"module"});
+    _ifcVolumeWorker=new Worker("ifc-volume-worker.js?v=28",{type:"module"});
     _ifcVolumeWorker.onmessage=function(event){
       var data=event.data||{},pending=_ifcVolumeRequests.get(data.id);
       if(!pending)return;
@@ -148,15 +149,43 @@ function getVolumeWorker(){
   return _ifcVolumeWorker;
 }
 async function getIfcBlob(api,modelId){
+  if(_ifcSourceFile)return _ifcSourceFile;
   var file=await api.viewer.getLoadedModel(modelId),blob=file&&file.blob;
-  if(blob instanceof Blob)return blob;
+  if(blob instanceof Blob){
+    if(await isIfcSource(blob))return blob;
+    throw new Error("Viewer chỉ cung cấp model chuyển đổi. Chọn file IFC gốc bên dưới để tính thể tích.");
+  }
   if(typeof blob==="string"){
     var raw=blob.indexOf("base64,")>=0?blob.slice(blob.indexOf("base64,")+7):blob;
+    try{
+      if(!/^ISO-10303-21;/i.test(atob(raw.slice(0,32)).trimStart()))throw new Error("not IFC");
+    }catch(e){throw new Error("Viewer chỉ cung cấp model chuyển đổi. Chọn file IFC gốc bên dưới để tính thể tích.");}
     var binary=atob(raw),bytes=new Uint8Array(binary.length);
     for(var i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-    return new Blob([bytes],{type:"application/ifc"});
+    var source=new Blob([bytes],{type:"application/ifc"});
+    if(await isIfcSource(source))return source;
   }
-  throw new Error("Trimble không trả nội dung IFC gốc cho model "+modelId+".");
+  throw new Error("Chọn file IFC gốc bên dưới để tính thể tích cho model "+modelId+".");
+}
+async function isIfcSource(blob){
+  return blob instanceof Blob&&blob.size>20&&/^ISO-10303-21;/i.test((await blob.slice(0,32).text()).trimStart());
+}
+async function chooseIfcSource(file){
+  var label=document.getElementById("ifcSourceName");
+  if(!file)return;
+  if(!await isIfcSource(file)){
+    if(label)label.textContent="File không phải IFC gốc (.ifc).";
+    log("✗ File đã chọn không có header IFC gốc ISO-10303-21.","err");
+    return;
+  }
+  _ifcSourceFile=file;
+  _ifcVolumeCache.clear();
+  if(_ifcVolumeWorker){_ifcVolumeWorker.terminate();_ifcVolumeWorker=null;}
+  _ifcVolumeRequests.forEach(function(p){p.reject(new Error("Đã đổi file IFC nguồn."));});
+  _ifcVolumeRequests.clear();
+  if(label)label.textContent="IFC gốc: "+file.name+" (chỉ đọc trên máy anh)";
+  log("✓ Đã nhận IFC gốc "+file.name+". Đang tính lại thể tích nhóm màu...","info");
+  await renderColorLedger();
 }
 async function convertObjectIdsSafely(api,modelId,items){
   var resolved=new Map(),failures=0,firstError="",maxFailures=256,batchSize=200;
@@ -200,7 +229,8 @@ async function fetchIfcVolumes(api,map){
     }
     if(!guids.length){items.forEach(function(item){_ifcVolumeCache.set(item.key,null);});continue;}
     var requestId=++_ifcVolumeRequestId;
-    var results=await new Promise(function(resolve,reject){_ifcVolumeRequests.set(requestId,{resolve:resolve,reject:reject});worker.postMessage({action:"volumes",id:requestId,sourceKey:modelId,blob:blob,guids:guids});});
+    var sourceKey=_ifcSourceFile?modelId+":"+_ifcSourceFile.name+":"+_ifcSourceFile.size+":"+_ifcSourceFile.lastModified:modelId;
+    var results=await new Promise(function(resolve,reject){_ifcVolumeRequests.set(requestId,{resolve:resolve,reject:reject});worker.postMessage({action:"volumes",id:requestId,sourceKey:sourceKey,blob:blob,guids:guids});});
     var resultMap=new Map(results.map(function(r){return[r.guid,r.volumeM3];}));
     items.forEach(function(item){_ifcVolumeCache.set(item.key,item.guid&&resultMap.has(item.guid)?resultMap.get(item.guid):null);});
   }
@@ -1554,6 +1584,7 @@ document.getElementById("qtyBtn3").addEventListener("click",async function(){
   await captureSelection();
   if(_selMap)showQty(3,_selMap);
 });
+document.getElementById("ifcSourceInput").addEventListener("change",function(){chooseIfcSource(this.files&&this.files[0]);});
 /* Option 4 wiring */
 (function(){
   var sb=document.getElementById("apSearchBtn");if(sb)sb.addEventListener("click",apSearch);
