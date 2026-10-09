@@ -17,7 +17,7 @@ Anh yêu cầu **sau mỗi 15 thao tác làm việc có ý nghĩa**, lưu quá t
 - Tool 1: `https://heodaigia1983.github.io/trimble-colorizer-pro/manifest.json`; trang v2.5: `https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=30`.
 - Tool 2 riêng ở `progress-tracker/`; không sửa khi việc chỉ liên quan Tool 1.
 - IFC anh dùng: `C:\Users\Admin\Downloads\KC Gia Binh.ifc`. File này được chọn trong browser để tính thể tích; không có bằng chứng đã upload lên GitHub.
-- HEAD cuối được xác minh: `088de34488f78034574e1ff1a178fed7814d49c5` (v2.5, 09/10/2026 15:13 UTC+7). Kiểm tra lại HEAD, branch, remote, status và manifest trước khi tiếp tục.
+- Code v2.5 ở `088de34488f78034574e1ff1a178fed7814d49c5` (09/10/2026 15:13 UTC+7); file handoff được đưa vào repo tại `a0b482f` sau đó. Kiểm tra lại HEAD, branch, remote, status và manifest trước khi tiếp tục.
 
 ## Diễn biến phiên 09/10/2026
 
@@ -50,7 +50,7 @@ Mở View: `getCurrentView`/`getView` lấy mô tả. Nếu máy không có loca
 
 ## Bằng chứng và việc chưa xác minh
 
-Trước commit v2.5, `node --check app.js` và `git diff --check` đều exit 0; không thêm/chạy test suite. Backup trước v2.5: `backup/mcc-before-cloud-view-qty-v30-20261009` → `bf7a6c3`. Backup trước sửa handoff: `backup/mcc-before-handoff-20261009` → `088de34`. Các tag đã push và đối chiếu trên origin. Workflow GitHub Pages `37903677651` deploy thành công; HTTP công khai trả manifest `v=30`, index `v2.5` và JS có `MCCQ1:`.
+Trước commit v2.5, `node --check app.js` và `git diff --check` đều exit 0; không thêm/chạy test suite. Backup trước v2.5: `backup/mcc-before-cloud-view-qty-v30-20261009` → `bf7a6c3`. Backup trước sửa handoff: `backup/mcc-before-handoff-20261009` → `088de34`; bản handoff đầu tiên: `backup/mcc-before-handoff-finalize-20261009` → `a0b482f`. Các tag đã push và đối chiếu trên origin. Workflow GitHub Pages `37903677651` deploy thành công; HTTP công khai trả manifest `v=30`, index `v2.5` và JS có `MCCQ1:`.
 
 **Chưa được xác minh trong phiên Trimble thật:** Sau `updateView`, Trimble có giữ `description` không; mở View ngày khác có khôi phục ledger và m³/tấn không. Phiên Chrome Codex thấy khi đó không có tab Trimble đăng nhập. Không coi deploy Pages hay API docs là bằng chứng tính năng đã hoạt động trên model của anh.
 
