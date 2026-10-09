@@ -1492,7 +1492,17 @@ document.getElementById("noteInput1").addEventListener("blur",function(){localSt
 document.getElementById("noteInput2").addEventListener("blur",function(){localStorage.setItem("mcc_note_slot2",this.value);addNoteMarkup(2);});
 document.getElementById("qtyBtn1").addEventListener("click",function(){showQty(1,_map1);});
 document.getElementById("qtyBtn2").addEventListener("click",function(){showQty(2,_map2);});
-document.getElementById("qtyBtn3").addEventListener("click",async function(){await captureSelection();if(_selMap)showQty(3,_selMap);});
+document.getElementById("qtyBtn3").addEventListener("click",async function(){
+  var resEl=document.getElementById("qtyResult3");
+  if(!_colorLedger.size){
+    resEl.classList.remove("hidden");
+    resEl.innerHTML='<div class="text-[10px] text-amber-700 p-2" style="background:#fff8e1;border:1px solid #f5d98b;border-radius:6px">Chưa có nhóm màu. Bấm <b>Apply</b> để lấy lựa chọn, chọn màu rồi bấm <b>OK</b> để tạo nhóm; thể tích và khối lượng nhóm sẽ hiện trong bảng màu.</div>';
+    return;
+  }
+  await renderColorLedger();
+  await captureSelection();
+  if(_selMap)showQty(3,_selMap);
+});
 /* Option 4 wiring */
 (function(){
   var sb=document.getElementById("apSearchBtn");if(sb)sb.addEventListener("click",apSearch);
