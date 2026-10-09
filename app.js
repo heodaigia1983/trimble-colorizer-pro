@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.4
+ * Model Control Center v2.5
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -34,6 +34,7 @@ var _ifcVolumeRequestId = 0;
 var _ifcVolumeCache = new Map();
 var _ifcSourceFile = null;
 var STEEL_DENSITY_KG_M3 = 7850;
+var _cloudViewQuantities = new Map();
 var _currentViewId = null;
 var _ledgerViewId = null;
 var _viewPollInterval = null;
@@ -110,6 +111,39 @@ function buildColorGroups(){
     modelMap.push(obj.runtimeId);
   }
   return groups;
+}
+function colorGroupSignature(info){
+  var keys=[],hash=2166136261;
+  info.ids.forEach(function(ids,modelId){ids.forEach(function(id){keys.push(makeObjectKey(modelId,id));});});
+  keys.sort().forEach(function(key){
+    for(var i=0;i<key.length;i++)hash=Math.imul(hash^key.charCodeAt(i),16777619);
+  });
+  return (hash>>>0).toString(36);
+}
+function makeViewDescription(){
+  var base="Model Control Center v2.5 | Le Van Thao",groups=buildColorGroups(),rows=[];
+  if(!groups.size)return base;
+  for(var entry of groups){
+    var color=entry[0],info=entry[1],s=_colorLedgerSummary&&_colorLedgerSummary.get(color);
+    if(!/^#[0-9a-f]{6}$/i.test(color)||!s||s.volumeMissing||s.weightMissing||!Number.isFinite(s.volume)||!Number.isFinite(s.weight))return base;
+    var values=[s.count,Math.round(s.volume*1000000),Math.round(s.weight*1000),Math.round(s.density*1000)];
+    if(values.some(function(n){return !Number.isSafeInteger(n)||n<0;}))return base;
+    rows.push(color.slice(1).toUpperCase()+"."+values.map(function(n){return n.toString(36);}).join(".")+"."+colorGroupSignature(info));
+  }
+  var description=base+"\nMCCQ1:"+rows.join(";");
+  return description.length<=240?description:base;
+}
+function readViewQuantities(description){
+  var snapshots=new Map(),match=String(description||"").match(/MCCQ1:([0-9A-Za-z.;]+)/);
+  if(!match)return snapshots;
+  match[1].split(";").forEach(function(row){
+    var x=row.split("."),color="#"+String(x[0]||"").toUpperCase();
+    if(x.length!==6||!/^#[0-9A-F]{6}$/.test(color)||!/^[0-9a-z]+$/.test(x[5]))return;
+    var n=x.slice(1,5).map(function(v){return /^[0-9a-z]+$/.test(v)?parseInt(v,36):NaN;});
+    if(n.some(function(v){return !Number.isSafeInteger(v)||v<0;}))return;
+    snapshots.set(color,{count:n[0],volume:n[1]/1000000,weight:n[2]/1000,density:n[3]/1000,signature:x[5]});
+  });
+  return snapshots;
 }
 function buildLedgerMapForColor(color){
   var groups=buildColorGroups();
@@ -259,6 +293,12 @@ async function rebuildColorLedgerSummary(){
     info.ids.forEach(function(ids){qty+=ids.length;});
     var density=getDensityForColor(color);
     var weight=0,volume=0,weightMissing=qty,volumeMissing=qty;
+    var stored=_cloudViewQuantities.get(color),allCached=true;
+    info.ids.forEach(function(ids,mid){ids.forEach(function(rid){var v=_ifcVolumeCache.get(makeObjectKey(mid,rid));if(!Number.isFinite(v)||v<=0)allCached=false;});});
+    if(!_ifcSourceFile&&!allCached&&stored&&stored.count===qty&&stored.signature===colorGroupSignature(info)&&Math.abs(stored.density-density)<=0.0005){
+      _colorLedgerSummary.set(color,{count:qty,weight:stored.weight,volume:stored.volume,weightMissing:0,volumeMissing:0,density:density,note:info.note});
+      continue;
+    }
     try{
       if(api){
         var q=await fetchQuantities(api, buildLedgerMapForColor(color));
@@ -475,18 +515,25 @@ async function recoverLedgerFromViewer(api){
   });
   return ledger;
 }
-async function loadLedger(viewId){
-  var ledger=new Map();
+async function loadLedger(viewId,viewSpec){
+  var ledger=new Map(),recovered=false,cloudView=viewSpec;
   try{
     var raw=localStorage.getItem("colorstudio_"+viewId);
     if(!raw){var state=localStorage.getItem("mcc_view_"+viewId);raw=state&&JSON.parse(state).colorLedger;}
     ledger=deserializeColorLedger(raw);
   }catch(e){log("Không đọc được dữ liệu nhóm màu đã lưu: "+e.message,"warn");}
   if(!ledger.size){
-    try{ledger=await recoverLedgerFromViewer(await getAPI());if(ledger.size)log("✓ Khôi phục "+fmtN(ledger.size)+" cấu kiện màu từ View đang mở.","ok");}
+    try{ledger=await recoverLedgerFromViewer(await getAPI());recovered=ledger.size>0;if(recovered)log("✓ Khôi phục "+fmtN(ledger.size)+" cấu kiện màu từ View đang mở.","ok");}
     catch(e){log("Không đọc được màu từ View: "+e.message,"warn");}
   }
+  if(!cloudView||!String(cloudView.description||"").includes("MCCQ1:")){
+    try{cloudView=await (await getAPI()).view.getView(String(viewId));}catch(e){}
+  }
   if(String(viewId)!==_currentViewId)return;
+  _cloudViewQuantities=readViewQuantities(cloudView&&cloudView.description);
+  if(recovered){
+    ledger.forEach(function(item){var saved=_cloudViewQuantities.get(item.color);if(saved&&saved.density>0)item.density=saved.density;});
+  }
   _ledgerViewId=String(viewId);
   _colorLedger=ledger;
   _colorLedgerSummary=null;
@@ -513,7 +560,7 @@ async function initActiveView(api){
   try{
     var view=await api.view.getCurrentView();
     var id=view&&view.id;
-    if(id&&!_loadingView){_currentViewId=String(id);await loadLedger(_currentViewId);}
+    if(id&&!_loadingView){_currentViewId=String(id);await loadLedger(_currentViewId,view);}
   }catch(e){}
   if(!_viewPollInterval){
     _viewPollInterval=setInterval(async function(){
@@ -523,7 +570,7 @@ async function initActiveView(api){
         var view=await _api.view.getCurrentView();
         var id=view&&view.id;
         if(_loadingView)return;
-        if(id&&String(id)!==_currentViewId){_currentViewId=String(id);await loadLedger(_currentViewId);}
+        if(id&&String(id)!==_currentViewId){_currentViewId=String(id);await loadLedger(_currentViewId,view);}
       }catch(e){}
     },5000);
   }
@@ -1133,10 +1180,33 @@ async function saveView(){
       if(inp)inp.value=name;
     }
     if(_colorLedger.size)await rebuildColorLedgerSummary();
-    var c=await api.view.createView({name:name,description:"Model Control Center v2.4 | Le Van Thao"});
+    var description=makeViewDescription(),cloudRequested=description.indexOf("MCCQ1:")>=0;
+    var c=await api.view.createView({name:name,description:description});
     if(!c||!c.id)throw new Error("No view ID.");
     await api.view.updateView({id:c.id});
     await api.view.selectView(c.id);
+    if(cloudRequested){
+      var savedView=null;
+      try{savedView=await api.view.getView(c.id);}catch(e){}
+      var expected=readViewQuantities(description);
+      var matchesSaved=function(view){
+        var actual=readViewQuantities(view&&view.description);
+        if(!expected.size||actual.size!==expected.size)return false;
+        for(var entry of expected){
+          var found=actual.get(entry[0]),wanted=entry[1];
+          if(!found||found.count!==wanted.count||found.volume!==wanted.volume||found.weight!==wanted.weight||found.density!==wanted.density||found.signature!==wanted.signature)return false;
+        }
+        return true;
+      };
+      if(!matchesSaved(savedView)){
+        await sleep(500);
+        try{savedView=await api.view.getView(c.id);}catch(e){}
+      }
+      if(matchesSaved(savedView))log("✓ Đã xác nhận số liệu nhóm màu được lưu trên Trimble View.","ok");
+      else log("⚠ Trimble chưa xác nhận lưu số liệu trên View; bản trên máy vẫn được giữ.","warn");
+    }else if(_colorLedger.size){
+      log("⚠ Chưa đủ thể tích hoặc số nhóm vượt dung lượng mô tả View; số liệu vẫn lưu trên máy.","warn");
+    }
 
     // Lưu colorLedger vào view mới
     _currentViewId=String(c.id);
@@ -1168,6 +1238,7 @@ async function saveView(){
     // Reset canvas + bảng kê sau khi lưu
     _colorLedger=new Map();
     _colorLedgerSummary=null;
+    _cloudViewQuantities=new Map();
     _ledgerViewId=null;
     await renderColorLedger();
     try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e3){}
@@ -1218,6 +1289,7 @@ async function loadView(viewId){
     await api.view.selectView(viewId);
     // Đợi viewer load xong view mới rồi mới tô màu
     await sleep(2000);
+    try{var savedView=await api.view.getView(viewId);_cloudViewQuantities=readViewQuantities(savedView&&savedView.description);}catch(e){_cloudViewQuantities=new Map();}
   }catch(e){log("⚠ Không chuyển được view trên viewer: "+(e&&e.message?e.message:String(e)),"warn");}
 
   // Khôi phục guids và tô màu lại
