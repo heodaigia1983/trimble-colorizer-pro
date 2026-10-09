@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.3
+ * Model Control Center v2.4
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -33,6 +33,7 @@ var _ifcVolumeRequests = new Map();
 var _ifcVolumeRequestId = 0;
 var _ifcVolumeCache = new Map();
 var _ifcSourceFile = null;
+var STEEL_DENSITY_KG_M3 = 7850;
 var _currentViewId = null;
 var _ledgerViewId = null;
 var _viewPollInterval = null;
@@ -68,7 +69,7 @@ function getDensityForColor(hex){
   for(var entry of _colorLedger){
     if(entry[1]&&entry[1].color===hex&&Number.isFinite(Number(entry[1].density))&&Number(entry[1].density)>0)density=Number(entry[1].density);
   }
-  return density;
+  return density||STEEL_DENSITY_KG_M3;
 }
 function setDensityForColor(hex,value){
   var density=Number(value);
@@ -132,7 +133,7 @@ function buildLedgerMapAll(){
 }
 function getVolumeWorker(){
   if(!_ifcVolumeWorker){
-    _ifcVolumeWorker=new Worker("ifc-volume-worker.js?v=28",{type:"module"});
+    _ifcVolumeWorker=new Worker("ifc-volume-worker.js?v=29",{type:"module"});
     _ifcVolumeWorker.onmessage=function(event){
       var data=event.data||{},pending=_ifcVolumeRequests.get(data.id);
       if(!pending)return;
@@ -180,6 +181,7 @@ async function chooseIfcSource(file){
   }
   _ifcSourceFile=file;
   _ifcVolumeCache.clear();
+  _colorLedger.forEach(function(item){if(item)delete item.volumeM3;});
   if(_ifcVolumeWorker){_ifcVolumeWorker.terminate();_ifcVolumeWorker=null;}
   _ifcVolumeRequests.forEach(function(p){p.reject(new Error("Đã đổi file IFC nguồn."));});
   _ifcVolumeRequests.clear();
@@ -212,7 +214,11 @@ async function convertObjectIdsSafely(api,modelId,items){
 }
 async function fetchIfcVolumes(api,map){
   var missing=[];
-  map.forEach(function(ids,mid){ids.forEach(function(rid){var key=makeObjectKey(mid,rid);if(!_ifcVolumeCache.has(key))missing.push({modelId:mid,runtimeId:rid,key:key});});});
+  map.forEach(function(ids,mid){ids.forEach(function(rid){
+    var key=makeObjectKey(mid,rid),volume=_ifcVolumeCache.get(key),ledgerItem=_colorLedger.get(key);
+    if(ledgerItem&&Number.isFinite(volume)&&volume>0)ledgerItem.volumeM3=volume;
+    if(!_ifcVolumeCache.has(key))missing.push({modelId:mid,runtimeId:rid,key:key});
+  });});
   var byModel=new Map();
   missing.forEach(function(item){var a=byModel.get(item.modelId);if(!a){a=[];byModel.set(item.modelId,a);}a.push(item);});
   var worker=getVolumeWorker();
@@ -232,7 +238,13 @@ async function fetchIfcVolumes(api,map){
     var sourceKey=_ifcSourceFile?modelId+":"+_ifcSourceFile.name+":"+_ifcSourceFile.size+":"+_ifcSourceFile.lastModified:modelId;
     var results=await new Promise(function(resolve,reject){_ifcVolumeRequests.set(requestId,{resolve:resolve,reject:reject});worker.postMessage({action:"volumes",id:requestId,sourceKey:sourceKey,blob:blob,guids:guids});});
     var resultMap=new Map(results.map(function(r){return[r.guid,r.volumeM3];}));
-    items.forEach(function(item){_ifcVolumeCache.set(item.key,item.guid&&resultMap.has(item.guid)?resultMap.get(item.guid):null);});
+    items.forEach(function(item){
+      var volume=item.guid&&resultMap.has(item.guid)?resultMap.get(item.guid):null;
+      _ifcVolumeCache.set(item.key,volume);
+      var ledgerItem=_colorLedger.get(item.key);
+      if(ledgerItem&&Number.isFinite(volume)&&volume>0)ledgerItem.volumeM3=volume;
+    });
+    saveLedger();
   }
   return _ifcVolumeCache;
 }
@@ -256,7 +268,7 @@ async function rebuildColorLedgerSummary(){
         var volumeMap=await fetchIfcVolumes(api,buildLedgerMapForColor(color));
         volume=0;volumeMissing=0;
         buildLedgerMapForColor(color).forEach(function(ids,mid){ids.forEach(function(rid){var v=volumeMap.get(makeObjectKey(mid,rid));if(v==null)volumeMissing++;else volume+=v;});});
-        if(density&&weightMissing===qty&&volumeMissing===0){weight=volume*density;weightMissing=0;}
+        if(density&&weightMissing>0&&volumeMissing===0){weight=volume*density;weightMissing=0;}
       }
     }catch(e){volumeMissing=qty;log("Không tính được chỉ số nhóm "+color+": "+(e&&e.message?e.message:String(e)),"warn");}
     _colorLedgerSummary.set(color, {count:qty, weight:weight, volume:volume, weightMissing:weightMissing, volumeMissing:volumeMissing, density:density, note:info.note});
@@ -416,7 +428,7 @@ function deserializeColorLedger(raw){
     arr.forEach(function(item){
       if(!item||!item.key) return;
       var value=item.value||{};
-      map.set(item.key,{color:String(value.color||"").trim(), note:String(value.note||"").trim(), density:Number(value.density)>0?Number(value.density):null});
+      map.set(item.key,{color:String(value.color||"").trim(), note:String(value.note||"").trim(), density:Number(value.density)>0?Number(value.density):null, volumeM3:Number(value.volumeM3)>0?Number(value.volumeM3):null});
     });
     return map;
   }
@@ -424,7 +436,7 @@ function deserializeColorLedger(raw){
     Object.keys(arr).forEach(function(key){
       var value=arr[key]||{};
       if(typeof value==="object"){
-        map.set(key,{color:String(value.color||"").trim(), note:String(value.note||"").trim(), density:Number(value.density)>0?Number(value.density):null});
+        map.set(key,{color:String(value.color||"").trim(), note:String(value.note||"").trim(), density:Number(value.density)>0?Number(value.density):null, volumeM3:Number(value.volumeM3)>0?Number(value.volumeM3):null});
       }
     });
     return map;
@@ -433,12 +445,54 @@ function deserializeColorLedger(raw){
 }
 function getLedgerKey(){return _ledgerViewId?"colorstudio_"+_ledgerViewId:null;}
 function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(serializeColorLedger()));}catch(e){}}
+function restoreVolumeCacheFromLedger(){
+  _colorLedger.forEach(function(item,key){
+    if(item&&Number.isFinite(item.volumeM3)&&item.volumeM3>0)_ifcVolumeCache.set(key,item.volumeM3);
+  });
+}
+function normalizeViewerColor(value){
+  if(typeof value==="string"){
+    var color=value.trim();
+    if(/^#?[0-9a-f]{6}$/i.test(color))return (color.charAt(0)==="#"?color:"#"+color).toUpperCase();
+    if(/^#[0-9a-f]{8}$/i.test(color))return color.slice(0,7).toUpperCase();
+    var rgb=color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if(rgb)return "#"+[1,2,3].map(function(i){return Math.min(255,Number(rgb[i])).toString(16).padStart(2,"0");}).join("").toUpperCase();
+  }
+  if(value&&typeof value==="object"&&[value.r,value.g,value.b].every(Number.isFinite)){
+    return "#"+[value.r,value.g,value.b].map(function(n){return Math.min(255,Math.max(0,n)).toString(16).padStart(2,"0");}).join("").toUpperCase();
+  }
+  return null;
+}
+async function recoverLedgerFromViewer(api){
+  var groups=await api.viewer.getColoredObjects(),ledger=new Map();
+  if(!Array.isArray(groups))return ledger;
+  groups.forEach(function(group){
+    if(!group||!group.modelId||!Array.isArray(group.objects))return;
+    group.objects.forEach(function(obj){
+      var color=normalizeViewerColor(obj&&obj.color),id=Number(obj&&obj.id);
+      if(color&&Number.isFinite(id))ledger.set(makeObjectKey(group.modelId,id),{color:color,note:"",density:STEEL_DENSITY_KG_M3});
+    });
+  });
+  return ledger;
+}
 async function loadLedger(viewId){
-  _ledgerViewId=viewId;
-  try{var raw=localStorage.getItem("colorstudio_"+viewId);_colorLedger=raw?deserializeColorLedger(raw):new Map();}catch(e){_colorLedger=new Map();}
-  await rebuildColorLedgerSummary();
+  var ledger=new Map();
+  try{
+    var raw=localStorage.getItem("colorstudio_"+viewId);
+    if(!raw){var state=localStorage.getItem("mcc_view_"+viewId);raw=state&&JSON.parse(state).colorLedger;}
+    ledger=deserializeColorLedger(raw);
+  }catch(e){log("Không đọc được dữ liệu nhóm màu đã lưu: "+e.message,"warn");}
+  if(!ledger.size){
+    try{ledger=await recoverLedgerFromViewer(await getAPI());if(ledger.size)log("✓ Khôi phục "+fmtN(ledger.size)+" cấu kiện màu từ View đang mở.","ok");}
+    catch(e){log("Không đọc được màu từ View: "+e.message,"warn");}
+  }
+  if(String(viewId)!==_currentViewId)return;
+  _ledgerViewId=String(viewId);
+  _colorLedger=ledger;
+  _colorLedgerSummary=null;
+  restoreVolumeCacheFromLedger();
   await renderColorLedger();
-  await repaintLedger();
+  if(ledger.size)saveLedger();
 }
 async function repaintLedger(){
   try{
@@ -457,18 +511,19 @@ async function repaintLedger(){
 }
 async function initActiveView(api){
   try{
-    var view=await api.viewer.getActiveView();
-    var id=view&&(view.id||view.name);
-    if(id){_currentViewId=String(id);loadLedger(_currentViewId);}
+    var view=await api.view.getCurrentView();
+    var id=view&&view.id;
+    if(id&&!_loadingView){_currentViewId=String(id);await loadLedger(_currentViewId);}
   }catch(e){}
   if(!_viewPollInterval){
     _viewPollInterval=setInterval(async function(){
       try{
         if(!_api)return;
         if(_loadingView)return;
-        var view=await _api.viewer.getActiveView();
-        var id=view&&(view.id||view.name);
-        if(id&&String(id)!==_currentViewId){_currentViewId=String(id);loadLedger(_currentViewId);}
+        var view=await _api.view.getCurrentView();
+        var id=view&&view.id;
+        if(_loadingView)return;
+        if(id&&String(id)!==_currentViewId){_currentViewId=String(id);await loadLedger(_currentViewId);}
       }catch(e){}
     },5000);
   }
@@ -1067,6 +1122,7 @@ async function exportMTO(slot){
 
 /* ═══ Save View ═══ */
 async function saveView(){
+  _loadingView=true;
   try{
     var api=await getAPI();
     var inp=document.getElementById("viewName");
@@ -1076,7 +1132,8 @@ async function saveView(){
       name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());
       if(inp)inp.value=name;
     }
-    var c=await api.view.createView({name:name,description:"Model Control Center v2.2 | Le Van Thao"});
+    if(_colorLedger.size)await rebuildColorLedgerSummary();
+    var c=await api.view.createView({name:name,description:"Model Control Center v2.4 | Le Van Thao"});
     if(!c||!c.id)throw new Error("No view ID.");
     await api.view.updateView({id:c.id});
     await api.view.selectView(c.id);
@@ -1118,6 +1175,7 @@ async function saveView(){
     log('✓ View đã lưu: "'+name+'" — Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");
     renderViewList();
   }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
+  finally{_loadingView=false;}
 }
 
 async function loadView(viewId){
@@ -1126,6 +1184,8 @@ async function loadView(viewId){
   var state;
   try{state=JSON.parse(raw);}catch(e){log("✗ Dữ liệu view bị lỗi.","err");return;}
 
+  _loadingView=true;
+  try{
   log('Đang load view "'+state.name+'"...',"info");
 
   // Reset sạch màu viewer và ledger trước khi tô view mới (tránh màu cộng dồn từ view trước)
@@ -1137,7 +1197,6 @@ async function loadView(viewId){
 
   // Khoá poll active-view trong lúc load để repaintLedger không tô đè/nạp ledger cũ,
   // rồi rebuild _colorLedger từ đúng màu thực tế sắp tô (1 nguồn duy nhất, tránh cộng KL trùng)
-  _loadingView=true;
   _currentViewId=String(viewId);
   _ledgerViewId=String(viewId);
 
@@ -1174,11 +1233,14 @@ async function loadView(viewId){
     log("Tô lại màu Slot 2 ("+state.guids2.length+" GUID)...","info");
     await paintSlot(2);
   }
-  if(state.colorLedger&&Array.isArray(state.colorLedger)){
+  if(state.colorLedger&&Array.isArray(state.colorLedger)&&state.colorLedger.length){
     _colorLedger=deserializeColorLedger(state.colorLedger);
+    restoreVolumeCacheFromLedger();
     await repaintLedger();
     await rebuildColorLedgerSummary();
     await renderColorLedger();
+  }else{
+    await loadLedger(viewId);
   }
   if(state.selMapSerialized&&state.selMapSerialized.length){
     _selMap=new Map();
@@ -1189,10 +1251,11 @@ async function loadView(viewId){
   }
 
   // Ledger giờ đã khớp đúng màu thực tế trên viewer → lưu lại & mở poll trở lại
-  _loadingView=false;
-  renderColorLedger();
+  await renderColorLedger();
   saveLedger();
   log('✓ Load view "'+state.name+'" hoàn tất.',"ok");
+  }catch(e){log("✗ Không tải được View: "+(e&&e.message?e.message:String(e)),"err");}
+  finally{_loadingView=false;}
 }
 
 function renderViewList(){
