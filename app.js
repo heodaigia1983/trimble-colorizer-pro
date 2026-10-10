@@ -1386,6 +1386,11 @@ function mccCloudCapture(name){
       volumeM3:s&&s.volumeMissing===0?s.volume:null,weightKg:s&&s.weightMissing===0?s.weight:null,
       volumeComplete:!!s&&s.volumeMissing===0,weightComplete:!!s&&s.weightMissing===0,note:getNoteForColor(color)});
   });
+  if(!groups.length)_cloudViewQuantities.forEach(function(saved,color){
+    var meta=_colorGroupMeta.get(color.toUpperCase())||{work:saved.work||"",issueDate:saved.issueDate||""};
+    groups.push({color:color,count:saved.count,signature:saved.signature,density:STEEL_DENSITY_KG_M3,work:meta.work,issueDate:meta.issueDate,
+      volumeM3:saved.volume,weightKg:saved.weight,volumeComplete:Number.isFinite(saved.volume),weightComplete:Number.isFinite(saved.weight),note:""});
+  });
   return {state:state,groups:groups};
 }
 async function mccRestoreCloudDraft(state,groups,remapped){
