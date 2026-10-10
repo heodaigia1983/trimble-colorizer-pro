@@ -43,23 +43,17 @@ body.mcc-ddc :focus-visible { outline: 2px solid var(--ddc-red) !important; outl
 .ddc-kicker { color: #ffe3aa; font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .ddc-masthead h1 { margin: 4px 0 2px; font-size: 17px; font-weight: 800; line-height: 1.18; letter-spacing: -.035em; }
 .ddc-masthead p { margin: 0; color: #ffe7eb; font-size: 10px; line-height: 1.35; }
-.ddc-owner { margin-top: 9px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.2); color: #fff2d1; font-size: 10px; }
-.ddc-owner strong { color: #fff; }
-
-.ddc-version-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-bottom: 9px; padding: 10px 12px;
-  border: 1px solid var(--ddc-line); border-left: 4px solid var(--ddc-red);
-  border-radius: 11px; background: #fff; box-shadow: var(--ddc-shadow);
-}
-.ddc-version-label, .ddc-kpi-label, .ddc-section-label {
+.ddc-owner { margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.25); color: #fff2d1; font-size: 13px; font-weight: 700; line-height: 1.4; }
+.ddc-owner strong { color: #fff; font-size: 15px; font-weight: 800; }
+.ddc-owner-phones { margin-top: 3px; color: #ffe7eb; font-size: 11px; font-weight: 500; }
+.ddc-owner-phones a { color: #fff; text-decoration: none; font-weight: 700; }
+.ddc-owner-phones a:hover { text-decoration: underline; }
+.ddc-build { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 9px; color: #ffe7eb; font-size: 10px; }
+.ddc-build strong { color: #ffe3aa; font-size: 11px; }
+.ddc-kpi-label, .ddc-section-label {
   color: var(--ddc-muted); font-size: 9px; font-weight: 800;
   letter-spacing: .08em; text-transform: uppercase;
 }
-.ddc-version-value { color: var(--ddc-red); font-size: 19px; font-weight: 800; line-height: 1.1; }
-.ddc-version-time { color: var(--ddc-muted); font-size: 9px; margin-top: 2px; }
-.ddc-live { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 999px; background: #eaf7ef; color: #13804d; font-size: 10px; font-weight: 700; white-space: nowrap; }
-.ddc-live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #17a765; }
 
 .ddc-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 13px; }
 .ddc-kpi { min-width: 0; padding: 10px 9px 9px; background: #fff; border: 1px solid var(--ddc-line); border-top: 3px solid var(--ddc-red); border-radius: 10px; box-shadow: 0 4px 12px rgba(105,18,37,.045); }

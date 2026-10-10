@@ -149,7 +149,7 @@
     #apList::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 4px; }
     #apList::-webkit-scrollbar-track { background: transparent; }
   </style>
-  <link rel="stylesheet" href="ddc-theme.css?v=35"/>
+  <link rel="stylesheet" href="ddc-theme.css?v=36"/>
 </head>
 <body class="mcc-ddc font-sans text-[12.5px] min-h-screen">
 
@@ -163,18 +163,12 @@
       <p>Tô màu · Khối lượng · Quản lý View</p>
     </div>
   </div>
-  <div class="ddc-owner">Phát triển bởi <strong id="metaUser">Lê Văn Thảo</strong> · 05.666668.47</div>
-</header>
-
-<!-- VERSION CARD -->
-<div class="ddc-version-card">
-  <div>
-    <div class="ddc-version-label">Phiên bản hiện tại</div>
-    <div class="ddc-version-value">v3.0</div>
-    <div class="ddc-version-time">Cập nhật: 10/10/2026 · 10:23 (UTC+7)</div>
+  <div class="ddc-owner">
+    <div>Phát triển bởi <strong id="metaUser">Lê Văn Thảo</strong></div>
+    <div class="ddc-owner-phones">Liên hệ: <a href="tel:0566666847">05.666668.47</a> · <a href="tel:0777778653">0.77777.8653</a></div>
   </div>
-  <span class="ddc-live">Sẵn sàng</span>
-</div>
+  <div class="ddc-build"><strong>Phiên bản v3.1</strong><span>Cập nhật: 10/10/2026 · 10:28 (UTC+7)</span></div>
+</header>
 
 <!-- MODEL KPI SUMMARY -->
 <div class="ddc-kpis" aria-label="Tóm tắt nhóm màu hiện tại">
@@ -545,7 +539,7 @@
 <div class="ddc-section-label">Nhật ký thao tác</div>
 <div id="log"></div>
 
-<div class="ddc-footer">ĐẠI DŨNG · Model Control Center v3.0 · Lê Văn Thảo</div>
+<div class="ddc-footer">ĐẠI DŨNG · Model Control Center v3.1 · Lê Văn Thảo</div>
 
 <script>
   function toggleAccordion(headerEl) {
@@ -557,7 +551,7 @@
     if (content) content.classList.toggle('hidden', isActive);
   }
 </script>
-<script src="app.js?v=35"></script>
-<script type="module" src="mcc-cloud.js?v=35" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
+<script src="app.js?v=36"></script>
+<script type="module" src="mcc-cloud.js?v=36" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
 </body>
 </html>
