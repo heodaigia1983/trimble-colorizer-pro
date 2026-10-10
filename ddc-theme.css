@@ -124,10 +124,15 @@ body.mcc-ddc #qtyResult3, body.mcc-ddc #apList {
   background: #fff; box-shadow: inset 0 1px 2px rgba(100,0,20,.025);
 }
 body.mcc-ddc #colorLedger { max-height: 300px !important; }
+body.mcc-ddc #colorLedger.volume-hidden .ledger-volume { display: none !important; }
 .ddc-density-note { margin-top: 6px; padding: 7px 8px; border-radius: 7px; background: #fff7e6; color: #76520d; font-size: 10px; line-height: 1.35; }
+.ddc-volume-btn { margin-top: 7px; padding: 6px 10px; border: 1px solid #d5acb4; border-radius: 6px; background: #fff; color: var(--ddc-red-dark); font-size: 10.5px; font-weight: 700; }
 .ddc-table-hint { margin: 5px 1px 0; color: var(--ddc-muted); font-size: 9px; }
 body.mcc-ddc .ledger-work-input { width: 190px; padding: 5px 6px; border: 1px solid #dfcdd1; border-radius: 5px; font-size: 10.5px; }
 body.mcc-ddc .ledger-date-input { width: 130px; padding: 4px 5px; border: 1px solid #dfcdd1; border-radius: 5px; font-size: 10.5px; }
+body.mcc-ddc .ledger-work-input:disabled, body.mcc-ddc .ledger-date-input:disabled { opacity: 1; background: #f9f7f7 !important; color: var(--ddc-ink) !important; }
+body.mcc-ddc .ledger-edit-btn { padding: 5px 8px; border: 1px solid #d5acb4; border-radius: 5px; background: #fff; color: var(--ddc-red-dark); font-size: 10px; font-weight: 700; white-space: nowrap; }
+body.mcc-ddc .ledger-edit-btn.is-confirming { background: #eaf7ef; border-color: #b7dfca; color: #13804d; }
 body.mcc-ddc th, body.mcc-ddc #colorLedger th, body.mcc-ddc #qtyResult1 th,
 body.mcc-ddc #qtyResult2 th, body.mcc-ddc #qtyResult3 th {
   background: var(--ddc-red) !important; color: #fff !important;

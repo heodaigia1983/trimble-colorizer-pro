@@ -1,5 +1,5 @@
 /**
- * Model Control Center v3.2
+ * Model Control Center v3.3
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -31,6 +31,8 @@ var _colorGroupMeta = new Map();
 var _ledgerRepainting = false;
 var _colorLedgerSummary = null;
 var _ledgerSelectedColors = new Set();
+var _ledgerVolumeVisible = false;
+var _editingColorGroups = new Map();
 var _ifcVolumeWorker = null;
 var _ifcVolumeRequests = new Map();
 var _ifcVolumeRequestId = 0;
@@ -87,15 +89,50 @@ function deserializeColorGroupMeta(raw){
 function serializeColorGroupMeta(){
   return Array.from(_colorGroupMeta.entries()).map(function(entry){return{color:entry[0],work:entry[1].work||"",issueDate:entry[1].issueDate||""};});
 }
-function updateColorGroupField(hex,field,value){
-  if(!/^#[0-9a-f]{6}$/i.test(hex)||!(field==="work"||field==="issueDate"))return;
-  if(field==="issueDate"&&value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))return;
-  hex=hex.toUpperCase();
-  var meta=_colorGroupMeta.get(hex)||{work:"",issueDate:""};
-  meta[field]=String(value||"").trim().slice(0,200);
-  _colorGroupMeta.set(hex,meta);
+function colorGroupEditControls(hex){
+  var el=document.getElementById("colorLedger");
+  if(!el)return{};
+  return{work:el.querySelector('.ledger-work-input[data-color="'+hex+'"]'),date:el.querySelector('.ledger-date-input[data-color="'+hex+'"]'),button:el.querySelector('.ledger-edit-btn[data-color="'+hex+'"]')};
+}
+function beginColorGroupEdit(hex){
+  if(!/^#[0-9a-f]{6}$/i.test(hex))return;
+  var controls=colorGroupEditControls(hex);
+  if(!controls.work||!controls.date||!controls.button)return;
+  _editingColorGroups.set(hex.toUpperCase(),{work:controls.work.value,issueDate:controls.date.value});
+  controls.work.disabled=false;controls.date.disabled=false;
+  controls.button.textContent="Xác nhận";controls.button.classList.add("is-confirming");
+  controls.button.setAttribute("onclick","confirmColorGroupEdit(this.dataset.color)");
+  controls.work.focus();
+}
+function stageColorGroupField(hex,field,value){
+  var draft=_editingColorGroups.get(String(hex).toUpperCase());
+  if(draft&&(field==="work"||field==="issueDate"))draft[field]=value;
+}
+function confirmColorGroupEdit(hex){
+  var key=String(hex).toUpperCase(),draft=_editingColorGroups.get(key),controls=colorGroupEditControls(hex);
+  if(!draft||!controls.work||!controls.date||!controls.button)return;
+  var work=controls.work.value.trim().slice(0,200),issueDate=controls.date.value;
+  if(issueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(issueDate)){log("Ngày phát hành không hợp lệ.","warn");return;}
+  _colorGroupMeta.set(key,{work:work,issueDate:issueDate});
+  _editingColorGroups.delete(key);
+  controls.work.value=work;controls.work.disabled=true;controls.date.disabled=true;
+  controls.button.textContent="Sửa";controls.button.classList.remove("is-confirming");
+  controls.button.setAttribute("onclick","beginColorGroupEdit(this.dataset.color)");
   saveLedger();
   if(window.MccCloud)window.MccCloud.scheduleDraft();
+  log("✓ Đã xác nhận nội dung và ngày phát hành cho nhóm "+hex+".","ok");
+}
+function syncLedgerVolumeToggle(hasRows){
+  var el=document.getElementById("colorLedger"),button=document.getElementById("toggleVolumeBtn");
+  if(!el||!button)return;
+  button.classList.toggle("hidden",!hasRows);
+  button.textContent=_ledgerVolumeVisible?"Ẩn thể tích":"Hiện thể tích";
+  button.setAttribute("aria-pressed",String(_ledgerVolumeVisible));
+  el.classList.toggle("volume-hidden",!_ledgerVolumeVisible);
+}
+function toggleLedgerVolume(){
+  _ledgerVolumeVisible=!_ledgerVolumeVisible;
+  syncLedgerVolumeToggle(!document.getElementById("colorLedger").classList.contains("hidden"));
 }
 function updateColorNoteForColor(hex, note){
   for(var entry of _colorLedger){
@@ -605,6 +642,7 @@ async function retryRecoverCurrentColors(api){
 async function loadLedger(viewId,viewSpec){
   var ledger=new Map(),cloudView=viewSpec;
   _cloudCachedLedger=new Map();
+  _editingColorGroups.clear();
   _colorGroupMeta=new Map();
   try{
     var raw=localStorage.getItem("colorstudio_"+viewId);
@@ -964,7 +1002,7 @@ async function resetViewer(){
   try{var api=await getAPI();try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}await api.viewer.reset();
   setStat("s-total","—");setStat("s-c1","—");setStat("s-c2","—");
   _map1=null;_map2=null;_selMap=null;
-  _colorLedger=new Map();_colorGroupMeta=new Map();_cloudViewQuantities=new Map();_ledgerViewId=null;_colorLedgerSummary=null;await renderColorLedger();
+  _colorLedger=new Map();_colorGroupMeta=new Map();_editingColorGroups.clear();_cloudViewQuantities=new Map();_ledgerViewId=null;_colorLedgerSummary=null;await renderColorLedger();
   [1,2].forEach(function(n){
     document.getElementById("qtyBtn"+n).disabled=true;
     document.getElementById("qtyResult"+n).classList.add("hidden");
@@ -1151,31 +1189,38 @@ function updateHeaderKPIs(rows,objectCount){
     weightEl.textContent=complete?(kg/1000).toLocaleString("vi-VN",{maximumFractionDigits:3}):"—";
   }
 }
+function colorGroupEditCells(color,meta){
+  var draft=_editingColorGroups.get(color.toUpperCase()),shown=draft||meta||{work:"",issueDate:""};
+  var disabled=draft?"":" disabled",label=draft?"Xác nhận":"Sửa",action=draft?"confirmColorGroupEdit":"beginColorGroupEdit";
+  return '<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-work-input" maxlength="200" data-color="'+color+'" value="'+escapeHtml(shown.work||"")+'" placeholder="Nội dung..."'+disabled+' oninput="stageColorGroupField(this.dataset.color,\'work\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
+    +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="date" class="ledger-date-input" data-color="'+color+'" value="'+escapeHtml(shown.issueDate||"")+'"'+disabled+' oninput="stageColorGroupField(this.dataset.color,\'issueDate\',this.value)"/></td>'
+    +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:center"><button type="button" class="ledger-edit-btn'+(draft?' is-confirming':'')+'" data-color="'+color+'" onclick="'+action+'(this.dataset.color)">'+label+'</button></td>';
+}
 function renderCloudQuantitySummary(el,expBtn){
   var rows=Array.from(_cloudViewQuantities.entries()).sort(function(a,b){return a[0].localeCompare(b[0]);});
   updateHeaderKPIs(rows.map(function(entry){return{weight:entry[1].weight,complete:Number.isFinite(entry[1].weight)};}),rows.reduce(function(sum,entry){return sum+Number(entry[1].count||0);},0));
   if(expBtn)expBtn.classList.add("hidden");
-  if(!rows.length){el.classList.add("hidden");return;}
+  if(!rows.length){el.classList.add("hidden");syncLedgerVolumeToggle(false);return;}
   var selected=rows.filter(function(entry){return _ledgerSelectedColors.has(entry[0]);});
   var volumeReady=selected.every(function(entry){return Number.isFinite(entry[1].volume);});
   var weightReady=selected.every(function(entry){return Number.isFinite(entry[1].weight);});
   var volume=selected.reduce(function(sum,entry){return sum+(entry[1].volume||0);},0);
   var weight=selected.reduce(function(sum,entry){return sum+(entry[1].weight||0);},0);
   var html='<div style="padding:7px 8px;background:#fff8e1;color:#795548;font:10.5px sans-serif">Số liệu lúc lưu View. Viewer chưa trả đủ ID cấu kiện để chọn trên model.</div>'
-    +'<table style="min-width:900px;width:100%;border-collapse:collapse;font:10.5px sans-serif"><thead><tr style="background:#f0f2f5"><th>✓</th><th>Màu</th><th>SL</th><th>V (m³)</th><th>KL (Tấn)</th><th>Nội dung công việc</th><th>Ngày phát hành</th></tr></thead><tbody>';
+    +'<table style="min-width:900px;width:100%;border-collapse:collapse;font:10.5px sans-serif"><thead><tr style="background:#f0f2f5"><th>✓</th><th>Màu</th><th>SL</th><th class="ledger-volume">V (m³)</th><th>KL (Tấn)</th><th>Nội dung công việc</th><th>Ngày phát hành</th><th>Thao tác</th></tr></thead><tbody>';
   rows.forEach(function(entry){
     var color=entry[0],data=entry[1],meta=_colorGroupMeta.get(color.toUpperCase())||data;
     html+='<tr><td style="text-align:center"><input type="checkbox" data-color="'+color+'" '+(_ledgerSelectedColors.has(color)?'checked':'')+' onchange="toggleCloudQuantityColor(this.dataset.color,this.checked)"/></td>'
       +'<td style="text-align:center"><span style="display:inline-block;width:18px;height:18px;border:1px solid #aaa;border-radius:3px;background:'+color+'"></span></td>'
       +'<td style="text-align:right">'+fmtN(data.count)+'</td>'
-      +'<td style="text-align:right">'+(Number.isFinite(data.volume)?data.volume.toLocaleString(undefined,{maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
+      +'<td class="ledger-volume" style="text-align:right">'+(Number.isFinite(data.volume)?data.volume.toLocaleString(undefined,{maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
       +'<td style="text-align:right">'+(Number.isFinite(data.weight)?(data.weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
-      +'<td><input type="text" class="ledger-work-input" maxlength="200" data-color="'+color+'" value="'+escapeHtml(meta.work||"")+'" placeholder="Nội dung..." onblur="updateColorGroupField(this.dataset.color,\'work\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
-      +'<td><input type="date" class="ledger-date-input" data-color="'+color+'" value="'+escapeHtml(meta.issueDate||"")+'" onchange="updateColorGroupField(this.dataset.color,\'issueDate\',this.value)"/></td></tr>';
+      +colorGroupEditCells(color,meta)+'</tr>';
   });
-  html+='</tbody></table><div style="padding:7px 8px;background:#e8f0fe;font:11px sans-serif">Nhóm đã chọn: <b>'+selected.length+'</b> / '+rows.length+' · Thể tích: <b>'+(volumeReady?volume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b> · Khối lượng: <b>'+(weightReady?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
+  html+='</tbody></table><div style="padding:7px 8px;background:#e8f0fe;font:11px sans-serif">Nhóm đã chọn: <b>'+selected.length+'</b> / '+rows.length+'<span class="ledger-volume"> · Thể tích: <b>'+(volumeReady?volume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b></span> · Khối lượng: <b>'+(weightReady?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
   el.innerHTML=html;
   el.classList.remove("hidden");
+  syncLedgerVolumeToggle(true);
 }
 function toggleCloudQuantityColor(color,checked){
   if(checked)_ledgerSelectedColors.add(color);else _ledgerSelectedColors.delete(color);
@@ -1197,9 +1242,10 @@ async function renderColorLedger(){
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">Màu</th>'
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">SL</th>'
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">KL (Tấn)</th>'
-    +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">V (m³)</th>'
+    +'<th class="ledger-volume" style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">V (m³)</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">Nội dung công việc</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">Ngày phát hành</th>'
+    +'<th style="text-align:center;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">Thao tác</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ghi chú</th>'
     +'</tr></thead><tbody>';
   colors.forEach(function(color,idx){
@@ -1220,9 +1266,8 @@ async function renderColorLedger(){
       +'<span style="display:block;width:18px;height:18px;border-radius:3px;background:'+color+';border:1px solid rgba(0,0,0,0.18)"></span></button></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+fmtN(count)+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.weightMissing===0?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.volumeMissing===0?volume.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-work-input" maxlength="200" data-color="'+color+'" value="'+escapeHtml(meta.work)+'" placeholder="Nội dung..." onblur="updateColorGroupField(this.dataset.color,\'work\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="date" class="ledger-date-input" data-color="'+color+'" value="'+escapeHtml(meta.issueDate)+'" onchange="updateColorGroupField(this.dataset.color,\'issueDate\',this.value)"/></td>'
+      +'<td class="ledger-volume" style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.volumeMissing===0?volume.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
+      +colorGroupEditCells(color,meta)
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-color="'+color+'" value="'+escapeHtml(note)+'" placeholder="Ghi chú..." onblur="updateColorNoteForColor(this.dataset.color,this.value.trim())" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
   });
@@ -1230,10 +1275,11 @@ async function renderColorLedger(){
   var chosen=colors.filter(function(c){return _ledgerSelectedColors.has(c);});
   var groupVolume=0,groupWeight=0,missingVolume=0,missingWeight=0;
   chosen.forEach(function(c){var s=_colorLedgerSummary.get(c);if(!s){missingVolume++;missingWeight++;return;}groupVolume+=s.volume;groupWeight+=s.weight;missingVolume+=s.volumeMissing;missingWeight+=s.weightMissing;});
-  html+='<div style="padding:7px 8px;background:#e8f0fe;border:1px solid #d0d3d8;font:11px sans-serif;color:#1a1c1e">Nhóm đã chọn: <b>'+chosen.length+'</b> / '+colors.length+' · Thể tích: <b>'+(chosen.length&&missingVolume===0?groupVolume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b> · Khối lượng: <b>'+(chosen.length&&missingWeight===0?(groupWeight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
+  html+='<div style="padding:7px 8px;background:#e8f0fe;border:1px solid #d0d3d8;font:11px sans-serif;color:#1a1c1e">Nhóm đã chọn: <b>'+chosen.length+'</b> / '+colors.length+'<span class="ledger-volume"> · Thể tích: <b>'+(chosen.length&&missingVolume===0?groupVolume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b></span> · Khối lượng: <b>'+(chosen.length&&missingWeight===0?(groupWeight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
   html+='<button id="repaintLedgerBtn" type="button" onclick="repaintLedgerColors()" '+(_ledgerRepainting?'disabled':'')+' class="w-full mt-2 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer" style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">🎨 Tô lại tất cả màu sau Reset model</button>';
   el.innerHTML=html;
   el.classList.remove("hidden");
+  syncLedgerVolumeToggle(true);
   if(expBtn)expBtn.classList.remove("hidden");
 }
 async function selectLedgerColorsOnViewer(){
@@ -1394,6 +1440,7 @@ function mccCloudCapture(name){
   return {state:state,groups:groups};
 }
 async function mccRestoreCloudDraft(state,groups,remapped){
+  _editingColorGroups.clear();
   _guids1=Array.isArray(state.guids1)?state.guids1:[];
   _guids2=Array.isArray(state.guids2)?state.guids2:[];
   _cloudImportIds[1]=state.import1||null;
@@ -1421,6 +1468,7 @@ async function mccRestoreCloudDraft(state,groups,remapped){
 
 /* ═══ Save View ═══ */
 async function saveView(){
+  if(_editingColorGroups.size){log("⚠ Hãy bấm Xác nhận cho nội dung công việc và ngày phát hành trước khi Lưu View.","warn");return;}
   _loadingView=true;
   try{
     var api=await getAPI();
@@ -1483,6 +1531,7 @@ async function saveView(){
     // Reset canvas + bảng kê sau khi lưu
     _colorLedger=new Map();
     _colorGroupMeta=new Map();
+    _editingColorGroups.clear();
     _colorLedgerSummary=null;
     _cloudViewQuantities=new Map();
     _ledgerViewId=null;
@@ -1509,6 +1558,7 @@ async function loadView(viewId){
 
   _loadingView=true;
   try{
+  _editingColorGroups.clear();
   log('Đang load view "'+state.name+'"...',"info");
 
   // Reset sạch màu viewer và ledger trước khi tô view mới (tránh màu cộng dồn từ view trước)

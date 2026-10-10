@@ -149,7 +149,7 @@
     #apList::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 4px; }
     #apList::-webkit-scrollbar-track { background: transparent; }
   </style>
-  <link rel="stylesheet" href="ddc-theme.css?v=37"/>
+  <link rel="stylesheet" href="ddc-theme.css?v=38"/>
 </head>
 <body class="mcc-ddc font-sans text-[12.5px] min-h-screen">
 
@@ -167,7 +167,7 @@
     <div>Phát triển bởi <strong id="metaUser">Lê Văn Thảo</strong></div>
     <div class="ddc-owner-phones">Liên hệ: <a href="tel:0566666847">05.666668.47</a> · <a href="tel:0777778653">0.77777.8653</a></div>
   </div>
-  <div class="ddc-build"><strong>Phiên bản v3.2</strong><span>Cập nhật: 10/10/2026 · 12:06 (UTC+7)</span></div>
+  <div class="ddc-build"><strong>Phiên bản v3.3</strong><span>Cập nhật: 10/10/2026 · 13:57 (UTC+7)</span></div>
 </header>
 
 <!-- MODEL KPI SUMMARY -->
@@ -405,9 +405,10 @@
     <button id="qtyBtn3" type="button"
             class="w-full mt-1.5 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 disabled:opacity-35 disabled:cursor-not-allowed mobile:min-h-[44px]"
             style="background:#f0f7f4;border:1px solid #b7dfca;color:#1e8e3e">📊 Xem khối lượng</button>
-    <div class="text-[9px] mt-1" style="color:#7b8088">Tạo nhóm màu: Lấy lựa chọn → chọn màu → Tô nhóm màu. Thể tích và KL hiện bên dưới.</div>
+    <div class="text-[9px] mt-1" style="color:#7b8088">Tạo nhóm màu: Lấy lựa chọn → chọn màu → Tô nhóm màu. Khối lượng hiện bên dưới; bấm Hiện thể tích khi cần.</div>
     <div class="ddc-density-note">Thép mặc định 7.850 kg/m³. Khi model thiếu KL nhưng có thể tích, KL = thể tích × 7.850.</div>
-    <div class="ddc-table-hint">↔ Kéo bảng sang phải để nhập Nội dung công việc và Ngày phát hành cho từng màu.</div>
+    <button id="toggleVolumeBtn" type="button" class="hidden ddc-volume-btn" aria-pressed="false" onclick="toggleLedgerVolume()">Hiện thể tích</button>
+    <div class="ddc-table-hint">↔ Kéo bảng sang phải, bấm Sửa để nhập Nội dung công việc và Ngày phát hành, rồi bấm Xác nhận.</div>
     <div class="hidden mt-1.5" id="colorLedger"
          style="border:1px solid #e2e5ea;border-radius:8px;max-height:240px;overflow-y:auto;overflow-x:auto"></div>
     <div class="hidden mt-1.5 overflow-x-auto" id="qtyResult3"></div>
@@ -541,7 +542,7 @@
 <div class="ddc-section-label">Nhật ký thao tác</div>
 <div id="log"></div>
 
-<div class="ddc-footer">ĐẠI DŨNG · Model Control Center v3.2 · Lê Văn Thảo</div>
+<div class="ddc-footer">ĐẠI DŨNG · Model Control Center v3.3 · Lê Văn Thảo</div>
 
 <script>
   function toggleAccordion(headerEl) {
@@ -553,7 +554,7 @@
     if (content) content.classList.toggle('hidden', isActive);
   }
 </script>
-<script src="app.js?v=37"></script>
-<script type="module" src="mcc-cloud.js?v=37" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
+<script src="app.js?v=38"></script>
+<script type="module" src="mcc-cloud.js?v=38" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
 </body>
 </html>
