@@ -1,5 +1,5 @@
 /**
- * Model Control Center v2.9
+ * Model Control Center v3.0
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -1124,8 +1124,19 @@ async function addNoteMarkup(slot){
 }
 
 /* ═══ Color Ledger ═══ */
+function updateHeaderKPIs(rows,objectCount){
+  var groupsEl=document.getElementById("metaGroups"),objectsEl=document.getElementById("metaObjects"),weightEl=document.getElementById("metaWeight");
+  if(groupsEl)groupsEl.textContent=fmtN(rows.length);
+  if(objectsEl)objectsEl.textContent=fmtN(objectCount);
+  if(weightEl){
+    var complete=rows.length>0&&rows.every(function(row){return row.complete&&Number.isFinite(row.weight);});
+    var kg=rows.reduce(function(sum,row){return sum+(Number.isFinite(row.weight)?row.weight:0);},0);
+    weightEl.textContent=complete?(kg/1000).toLocaleString("vi-VN",{maximumFractionDigits:3}):"—";
+  }
+}
 function renderCloudQuantitySummary(el,expBtn){
   var rows=Array.from(_cloudViewQuantities.entries()).sort(function(a,b){return a[0].localeCompare(b[0]);});
+  updateHeaderKPIs(rows.map(function(entry){return{weight:entry[1].weight,complete:Number.isFinite(entry[1].weight)};}),rows.reduce(function(sum,entry){return sum+Number(entry[1].count||0);},0));
   if(expBtn)expBtn.classList.add("hidden");
   if(!rows.length){el.classList.add("hidden");return;}
   var selected=rows.filter(function(entry){return _ledgerSelectedColors.has(entry[0]);});
@@ -1158,6 +1169,7 @@ async function renderColorLedger(){
   var groups=buildColorGroups();
   if(!groups.size){renderCloudQuantitySummary(el,expBtn);return;}
   await rebuildColorLedgerSummary();
+  updateHeaderKPIs(Array.from(groups.keys()).map(function(color){var summary=_colorLedgerSummary.get(color);return{weight:summary&&summary.weight,complete:!!summary&&summary.weightMissing===0};}),_colorLedger.size);
   var colors=Array.from(groups.keys()).sort();
   var html='<table style="width:100%;border-collapse:collapse">'
     +'<thead><tr style="background:#f0f2f5;position:sticky;top:0;z-index:2">'
