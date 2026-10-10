@@ -1,19 +1,19 @@
 # So sánh IFC hai ngày trên Model Control Center
 
-## Cách dùng bản v3.4
+## Cách dùng bản v3.5
 
-1. Trên máy anh, mở `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\ifc-diff\release\SoSanhIFC.exe`. Chọn IFC cũ và IFC mới, bấm **Bắt đầu so sánh**. Khi xong, mở thư mục kết quả và lấy file `diff_*.json` của đúng lần chạy.
-2. Mở đồng thời **hai mốc IFC** trong cùng Trimble Viewer. Anh có thể thử hai phiên bản của một file/model như dự định; chỉ tiếp tục khi danh sách **Model đang mở** hiện hai `versionId` riêng. Nếu Viewer chỉ cho mở một phiên bản tại một thời điểm, tải hai IFC thành hai model riêng cùng tọa độ để xem so sánh đồng thời. File 500–700 MB được xử lý trên máy bằng ứng dụng Windows; GitHub Pages không nhận IFC gốc.
-3. Trong Model Control Center, mở mục **So sánh IFC hai ngày trên 3D**, chọn `diff_*.json`, bấm **Model đang mở**, đối chiếu rõ mốc cũ/mới với tên file và ID phiên bản, rồi bấm **Tô so sánh**. Khi tên hiển thị khác tên IFC nguồn, chỉ tích ô xác nhận sau khi đã đối chiếu thủ công.
-4. Model cũ thành xám. Kết quả có màu: xanh lá = chỉ có ở mốc mới; cam = khác thuộc tính/vị trí; đỏ = chỉ có ở mốc cũ; tím = tạo lại/dựng lại; xanh dương = đổi mã; xanh ngọc = bu lông mới. Bấm một dòng trong bảng để chọn cấu kiện trên model. **Khôi phục màu** trả các trạng thái so sánh về màu gốc của model.
+1. Tải IFC ngày cũ và IFC ngày mới thành **hai model riêng cùng tọa độ** trong Trimble Connect; mở cả hai như ảnh anh gửi. Chỉ chọn hai file của cùng hạng mục/phạm vi xuất, không lấy Zone 02 so với Zone 03.
+2. Trong Model Control Center, mở mục **So sánh IFC hai ngày trên 3D**, bấm **Model đang mở**, chọn IFC cũ và IFC mới, xác nhận cùng phạm vi rồi bấm **So sánh trực tiếp**. Không cần chọn file JSON. Tool đọc GUID và thuộc tính từ Viewer theo từng lô, hiển thị tiến độ; có nút **Dừng**.
+3. Hai model thành xám để màu khác biệt nổi bật. Xanh lá = GUID chỉ có ở mốc mới; đỏ = GUID chỉ có ở mốc cũ; cam = cùng GUID nhưng khác thuộc tính/vị trí mà Viewer cấp. Bấm dòng kết quả để chọn cấu kiện trên 3D. **Khôi phục màu** trả về màu gốc model, không lấy lại màu tô tay trước đó.
+4. Khi cần phân loại sâu đổi mã, dựng lại, gộp assembly và bu lông, mở phần tùy chọn, chạy `C:\Users\Admin\Projects\6.Tool\Trimble tool\Trimble tool\ifc-diff\release\SoSanhIFC.exe` với hai IFC gốc rồi nạp `diff_*.json`. Đây là đường phân tích bổ sung, không bắt buộc cho nút so sánh trực tiếp.
 
 ## Cách đọc kết quả
 
 - `Chỉ có mốc mới` là ứng viên thêm; `chỉ có mốc cũ` là ứng viên bỏ. Chưa gọi là sản lượng dựng mới hoặc xóa thật cho đến khi xác nhận hai lần xuất cùng phạm vi.
-- Bảng tấn lấy từ báo cáo `diff_*.json` của bộ so sánh hiện có. Bảng không cộng khối lượng assembly với part con. Khi báo cáo có cảnh báo về cấu hình xuất, số tấn chỉ để đối chiếu.
+- Luồng trực tiếp bỏ qua assembly và `IfcCovering`, chỉ lấy class cấu kiện vật lý; vì vậy tránh cộng assembly với part con. Khối lượng ứng viên thêm/bỏ chỉ hiện khi toàn bộ cấu kiện liên quan có KL hoặc V để suy ra KL với thép 7850 kg/m³. Số tấn vẫn cần kiểm tra phạm vi/cấu hình xuất. Luồng JSON giữ số liệu từ bộ so sánh hiện có.
 - Cặp mẫu 15/09–16/09 khác `BaseQuantities`, `SurfaceTreatments`, `ViewColors`, và cả hai có `Export all: Off`; lớp `IfcCovering` do `SurfaceTreatments` được tách khỏi sản lượng kết cấu. Hai IFC không có căn cứ đủ để quy công việc cho một nhân viên cụ thể.
-- Tool kiểm tra chéo mẫu GUID chỉ có ở một mốc để phát hiện chọn ngược. GUID khớp quá ít thì dừng trước khi tô. Nếu Viewer không trả đúng runtime ID, xem dòng trạng thái và LOG; không lấy số không khớp làm bằng chứng thay đổi.
+- Luồng trực tiếp dừng khi thiếu/trùng nhiều GUID hoặc hai model gần như không có GUID chung. Nó chỉ nhận diện thay đổi của cùng GUID qua thuộc tính và vị trí do Viewer trả; thay đổi hình học bên trong cấu kiện mà các giá trị này không đổi có thể không được phát hiện. Luồng JSON kiểm tra chéo mẫu GUID chỉ có ở mỗi phía để phát hiện chọn ngược.
 
 ## Giới hạn đã biết
 
-Luồng hiện tại cần hai mốc IFC hiện đồng thời như **hai versionId được tải** trong Viewer. Khả năng Trimble thực sự tải song song hai phiên bản của cùng file phải xác minh trên dự án anh; nếu không, dùng hai model riêng cùng tọa độ. Kết quả so sánh chỉ được giữ trong phiên trình duyệt đang mở; file JSON do ứng dụng Windows tạo là nguồn để nạp lại lần sau. Chưa có bằng chứng thao tác thực tế trong Trimble cho v3.4.
+Luồng chính dùng hai model riêng cùng mở trong Viewer, đúng ảnh anh gửi. Với model lớn, đọc GUID và thuộc tính qua API có thể mất thời gian; nếu Viewer không cấp đủ dữ liệu hoặc dừng giữa chừng, tool báo lỗi và không gọi đó là kết quả hoàn chỉnh. Kết quả so sánh chỉ giữ trong phiên trình duyệt đang mở; nạp lại hai model và chạy lại khi mở phiên khác. Chưa có bằng chứng thao tác thực tế trong Trimble cho v3.5.

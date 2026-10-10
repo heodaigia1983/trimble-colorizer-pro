@@ -1,10 +1,11 @@
-/* IFC comparison overlay. The large IFC files are processed by the local IFC Diff app. */
+/* IFC comparison overlay: direct Viewer comparison, with optional local IFC Diff report. */
 (function () {
   "use strict";
   var report = null;
   var mapped = new Map();
   var painted = null;
   var busy = false;
+  var cancelled = false;
   var COLORS = { A: "#00D46A", M: "#FF8A00", N: "#1E90FF", T: "#A33BFF", R: "#F12448", B: "#00C5E8" };
   var LABELS = { A: "Chỉ có mốc mới", M: "Thay đổi", N: "Đổi mã", T: "Tạo lại / dựng lại", R: "Chỉ có mốc cũ", GOP: "Gộp vào assembly", B: "Bu lông mới" };
   var $ = function (id) { return document.getElementById(id); };
@@ -16,7 +17,8 @@
   }
   function setBusy(value) {
     busy = value;
-    ["compareRefresh", "comparePaint", "compareClear", "compareFile"].forEach(function (id) { $(id).disabled = value; });
+    ["compareRefresh", "compareDirect", "comparePaint", "compareClear", "compareFile"].forEach(function (id) { $(id).disabled = value; });
+    $("compareCancel").hidden = !value;
   }
   function number(value) { return Number(value || 0).toLocaleString("vi-VN"); }
   function tons(value) { return Number(value || 0).toLocaleString("vi-VN", { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
@@ -49,7 +51,7 @@
       });
       $("compareOldModel").value = oldValue;
       $("compareNewModel").value = newValue;
-      if (report && !sameName(report.meta.old_file, report.meta.new_file)) {
+      if (report && !report.meta.direct && !sameName(report.meta.old_file, report.meta.new_file)) {
         models.forEach(function (model) {
           if (sameName(model.name, report.meta.old_file)) $("compareOldModel").value = modelId(model);
           if (sameName(model.name, report.meta.new_file)) $("compareNewModel").value = modelId(model);
@@ -129,7 +131,8 @@
   }
   async function clearOverlay(api) {
     if (!painted) return;
-    for (var entry of painted.newIds) await paintIds(api, painted.newId, entry[1], "reset");
+    if (painted.resetAllNew) await api.viewer.setObjectState({ modelObjectIds: [{ modelId: painted.newId }] }, { color: "reset" });
+    else for (var entry of painted.newIds) await paintIds(api, painted.newId, entry[1], "reset");
     await api.viewer.setObjectState({ modelObjectIds: [{ modelId: painted.oldId }] }, { color: "reset" });
     painted = null; mapped.clear();
   }
@@ -141,9 +144,161 @@
     finally { setBusy(false); }
   }
 
+  function checkCancelled() { if (cancelled) throw new Error("Đã dừng so sánh theo yêu cầu."); }
+  function externalGuid(value) {
+    var id = String(value || "").trim();
+    if (/^[0-3][0-9A-Za-z_$]{21}$/.test(id)) return id;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return uuid2ifc(id);
+    return null;
+  }
+  function isPhysical(object) {
+    var cls = String(object.class || (object.product && object.product.objectType) || "").toUpperCase();
+    return /^IFC(BEAM|COLUMN|MEMBER|PLATE|FOOTING|SLAB|WALL|ROOF|STAIR|RAILING|FASTENER|MECHANICALFASTENER|DISCRETEACCESSORY|BUILDINGELEMENTPROXY|PIPESEGMENT|FLOWSEGMENT|CURTAINWALL)$/.test(cls);
+  }
+  function positionKey(position) {
+    if (!position || ![position.x, position.y, position.z].every(Number.isFinite)) return "";
+    return [position.x, position.y, position.z].map(function (n) { return Math.round(n * 200) / 200; }).join("|");
+  }
+  function readProperties(object) {
+    var fields = {}, weight = null, volume = null;
+    (object.properties || []).forEach(function (set) {
+      (set.properties || []).forEach(function (property) {
+        var name = String(property.name || ""), value = property.value;
+        if (value == null || String(value).trim() === "") return;
+        if (weight == null && /NetWeight|GrossWeight|^Weight$/i.test(name)) {
+          var w = Number(String(value).replace(",", ".")); if (Number.isFinite(w) && w > 0) weight = w;
+        }
+        if (volume == null && /NetVolume|GrossVolume|^Volume$/i.test(name)) {
+          var v = Number(String(value).replace(",", ".")); if (Number.isFinite(v) && v > 0) volume = v;
+        }
+        if (/weight|volume|area|surface|color|colour|guid|^id$|phase|revision|date|timestamp|created|modified|ownerhistory/i.test(name)) return;
+        if (/profile|material|length|width|height|thick|diam|section|start|end|position|predefinedtype/i.test(name)) {
+          fields[(String(set.name || "") + "/" + name).toLowerCase()] = String(value).trim();
+        }
+      });
+    });
+    return { fields: fields, weightKg: weight != null ? weight : volume != null ? volume * 7850 : null, profile: Object.keys(fields).filter(function (key) { return /profile|section/.test(key); }).map(function (key) { return fields[key]; })[0] || "" };
+  }
+  function changed(a, b) {
+    if (a.cls !== b.cls || a.name !== b.name || (a.pos && b.pos && a.pos !== b.pos)) return true;
+    return Object.keys(a.fields).some(function (key) {
+      if (!Object.prototype.hasOwnProperty.call(b.fields, key)) return false;
+      var oldValue = a.fields[key], newValue = b.fields[key];
+      var oldNumber = Number(oldValue), newNumber = Number(newValue);
+      if (oldValue !== "" && newValue !== "" && Number.isFinite(oldNumber) && Number.isFinite(newNumber)) return Math.abs(oldNumber - newNumber) > 0.001;
+      return oldValue !== newValue;
+    });
+  }
+  async function convertIds(api, mid, ids) {
+    checkCancelled();
+    try {
+      var result = await api.viewer.convertToObjectIds(mid, ids);
+      if (!Array.isArray(result) || result.length !== ids.length) throw new Error("Viewer trả GUID thiếu dòng.");
+      return result;
+    } catch (error) {
+      if (ids.length === 1) return [null];
+      var split = Math.floor(ids.length / 2);
+      return (await convertIds(api, mid, ids.slice(0, split))).concat(await convertIds(api, mid, ids.slice(split)));
+    }
+  }
+  async function scanLoadedModel(api, mid, label) {
+    $("compareProgress").textContent = "Đang đọc cấu kiện model " + label + "...";
+    var raw = await api.viewer.getObjects({ modelObjectIds: [{ modelId: mid }] });
+    checkCancelled();
+    var group = (Array.isArray(raw) ? raw : []).filter(function (entry) { return entry && entry.modelId === mid; });
+    var objects = group.flatMap(function (entry) { return Array.isArray(entry.objects) ? entry.objects : []; });
+    var physical = objects.filter(function (object) { return object && Number.isFinite(object.id) && isPhysical(object); });
+    if (!physical.length) throw new Error("Viewer chưa trả cấu kiện IFC vật lý cho model " + label + ". Kiểm tra model đã tải xong và IFC có class cấu kiện.");
+    var byGuid = new Map(), missing = 0, duplicate = 0;
+    for (var i = 0; i < physical.length; i += 200) {
+      checkCancelled();
+      var batch = physical.slice(i, i + 200), ids = batch.map(function (object) { return object.id; });
+      var external = await convertIds(api, mid, ids);
+      batch.forEach(function (object, n) {
+        var guid = externalGuid(external[n]);
+        if (!guid) { missing++; return; }
+        if (byGuid.has(guid)) { duplicate++; return; }
+        byGuid.set(guid, { guid: guid, id: object.id, cls: String(object.class || "").toUpperCase(), name: String((object.product && object.product.name) || "").trim(), pos: positionKey(object.position), fields: {}, profile: "", weightKg: null });
+      });
+      $("compareProgress").textContent = "Đang ghép GUID " + label + ": " + number(Math.min(i + 200, physical.length)) + "/" + number(physical.length);
+      if (i % 2000 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    }
+    if (!byGuid.size || missing / physical.length > 0.05 || duplicate) throw new Error("GUID model " + label + " không đủ tin cậy: thiếu " + number(missing) + ", trùng " + number(duplicate) + ". Chưa tô màu.");
+    var entries = Array.from(byGuid.values()), missingProperties = 0;
+    for (var j = 0; j < entries.length; j += 200) {
+      checkCancelled();
+      var slice = entries.slice(j, j + 200), props;
+      try { props = await api.viewer.getObjectProperties(mid, slice.map(function (entry) { return entry.id; })); }
+      catch (error) { throw new Error("Không đọc đủ thuộc tính model " + label + " tại " + number(j) + "/" + number(entries.length) + ": " + error.message); }
+      var byId = new Map((Array.isArray(props) ? props : []).map(function (object) { return [object.id, object]; }));
+      slice.forEach(function (entry) {
+        var detail = byId.get(entry.id); if (!detail) { missingProperties++; return; }
+        var parsed = readProperties(detail); entry.fields = parsed.fields; entry.profile = parsed.profile; entry.weightKg = parsed.weightKg;
+        if (!entry.pos) entry.pos = positionKey(detail.position);
+      });
+      $("compareProgress").textContent = "Đang đọc thuộc tính " + label + ": " + number(Math.min(j + 200, entries.length)) + "/" + number(entries.length);
+      if (j % 2000 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0); });
+    }
+    if (missingProperties / entries.length > 0.05) throw new Error("Viewer thiếu thuộc tính của " + number(missingProperties) + " cấu kiện model " + label + ". Chưa tô màu để tránh kết luận sai.");
+    return { objects: byGuid, scanned: physical.length, excluded: objects.length - physical.length, missing: missing,
+      withFields: entries.filter(function (entry) { return Object.keys(entry.fields).length > 0; }).length };
+  }
+  async function compareDirect() {
+    if (busy) return;
+    cancelled = false; setBusy(true);
+    try {
+      var pair = selectedModels();
+      if (!$("compareSameScope").checked) throw new Error("Xác nhận hai IFC cùng hạng mục, tọa độ và đúng thứ tự cũ/mới trước khi so sánh.");
+      var api = await getAPI();
+      var oldScan = await scanLoadedModel(api, pair.oldId, "cũ");
+      var newScan = await scanLoadedModel(api, pair.newId, "mới");
+      checkCancelled();
+      var shared = 0;
+      oldScan.objects.forEach(function (_item, guid) { if (newScan.objects.has(guid)) shared++; });
+      if (oldScan.objects.size > 1000 && newScan.objects.size > 1000 && shared / Math.min(oldScan.objects.size, newScan.objects.size) < 0.01) {
+        throw new Error("Hai model chỉ trùng " + number(shared) + " GUID (<1%). Có thể khác hạng mục hoặc GUID đã đổi hàng loạt; chưa tô màu để tránh báo sai.");
+      }
+      var items = [], oldIds = [], newIds = [], modifiedIds = [], oldWeight = 0, newWeight = 0, oldMissingWeight = 0, newMissingWeight = 0;
+      oldScan.objects.forEach(function (item, guid) {
+        var latest = newScan.objects.get(guid);
+        if (!latest) { items.push({ guid: guid, status: "R", name: item.name, profile: item.profile, weight_kg: item.weightKg }); oldIds.push(item.id); if (item.weightKg == null) oldMissingWeight++; else oldWeight += item.weightKg; }
+        else if (changed(item, latest)) { items.push({ guid: guid, status: "M", name: latest.name, profile: latest.profile, weight_kg: latest.weightKg }); modifiedIds.push(latest.id); }
+      });
+      newScan.objects.forEach(function (item, guid) {
+        if (!oldScan.objects.has(guid)) { items.push({ guid: guid, status: "A", name: item.name, profile: item.profile, weight_kg: item.weightKg }); newIds.push(item.id); if (item.weightKg == null) newMissingWeight++; else newWeight += item.weightKg; }
+      });
+      await clearOverlay(api);
+      report = null;
+      $("compareRows").replaceChildren();
+      mapped = new Map();
+      oldScan.objects.forEach(function (item, guid) { mapped.set("old:" + guid, item.id); });
+      newScan.objects.forEach(function (item, guid) { mapped.set("new:" + guid, item.id); });
+      await api.viewer.setObjectState({ modelObjectIds: [{ modelId: pair.oldId }] }, { color: "#9AA2AE" });
+      painted = { oldId: pair.oldId, newId: pair.newId, newIds: [], resetAllNew: true };
+      await api.viewer.setObjectState({ modelObjectIds: [{ modelId: pair.newId }] }, { color: "#9AA2AE" });
+      await paintIds(api, pair.oldId, oldIds, COLORS.R);
+      await paintIds(api, pair.newId, newIds, COLORS.A);
+      await paintIds(api, pair.newId, modifiedIds, COLORS.M);
+      var counts = { A: newIds.length, M: modifiedIds.length, R: oldIds.length };
+      report = { meta: { direct: true, old_file: pair.old.name, new_file: pair.newer.name }, items: items, bolts: [], summary: { counts: counts } };
+      $("compareSource").textContent = "Đang dùng so sánh trực tiếp; không cần JSON.";
+      $("compareKpis").innerHTML = '<div><b>' + number(counts.A) + '</b><span>Chỉ có mốc mới</span></div>'
+        + '<div><b>' + number(counts.M) + '</b><span>Khác thuộc tính/vị trí</span></div>'
+        + '<div><b>' + number(counts.R) + '</b><span>Chỉ có mốc cũ</span></div>'
+        + '<div><b>' + (newMissingWeight ? '—' : tons(newWeight / 1000)) + '</b><span>Tấn ứng viên thêm</span></div>'
+        + '<div><b>' + (oldMissingWeight ? '—' : tons(oldWeight / 1000)) + '</b><span>Tấn ứng viên bỏ</span></div>'
+        + '<div><b>' + number(newMissingWeight + oldMissingWeight) + '</b><span>Cấu kiện thiếu KL</span></div>';
+      renderRows();
+      $("compareWarning").textContent = "Đã đọc " + number(oldScan.scanned) + " cấu kiện cũ và " + number(newScan.scanned) + " cấu kiện mới; trùng " + number(shared) + " GUID; bỏ qua class ngoài kết cấu: " + number(oldScan.excluded) + "/" + number(newScan.excluded) + ". Viewer có thuộc tính so sánh ở " + number(oldScan.withFields) + "/" + number(newScan.withFields) + " cấu kiện. Cùng GUID chỉ so thuộc tính/vị trí Viewer cấp, chưa kiểm chứng mọi biến đổi hình học. Chỉ tính tấn khi đủ KL và hai IFC cùng phạm vi/cấu hình xuất. Khôi phục màu trả màu gốc model.";
+      $("compareProgress").textContent = "Đã tô " + number(items.length) + " cấu kiện khác nhau.";
+      show("So sánh trực tiếp xong: thêm " + number(counts.A) + ", thay đổi " + number(counts.M) + ", chỉ có cũ " + number(counts.R) + ".");
+    } catch (error) { show(error.message, true); }
+    finally { setBusy(false); }
+  }
+
   async function paintComparison() {
     if (busy) return;
-    if (!report) { show("Chọn file diff_*.json trước khi tô so sánh.", true); return; }
+    if (!report || report.meta.direct) { show("Chọn file diff_*.json trong phần tùy chọn trước khi tô theo báo cáo.", true); return; }
     setBusy(true);
     try {
       var pair = selectedModels();
@@ -214,6 +369,8 @@
     $("compareRefresh").addEventListener("click", refreshModels);
     $("compareFile").addEventListener("change", loadReport);
     $("compareFilter").addEventListener("change", renderRows);
+    $("compareDirect").addEventListener("click", compareDirect);
+    $("compareCancel").addEventListener("click", function () { cancelled = true; $("compareProgress").textContent = "Đang dừng sau lô hiện tại..."; });
     $("comparePaint").addEventListener("click", paintComparison);
     $("compareClear").addEventListener("click", clearComparison);
   });
