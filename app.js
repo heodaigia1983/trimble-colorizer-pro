@@ -1,5 +1,5 @@
 /**
- * Model Control Center v3.0
+ * Model Control Center v3.2
  * ─────────────────────────────────────
  * 2 file Excel, màu tùy chọn cho mỗi file
  * Còn lại giữ màu gốc
@@ -27,6 +27,7 @@ var _map2 = null;
 var _noteMarkupId = {1:null,2:null,3:null};
 var MARKUP_COLOR = "#FF1493";
 var _colorLedger = new Map();
+var _colorGroupMeta = new Map();
 var _ledgerRepainting = false;
 var _colorLedgerSummary = null;
 var _ledgerSelectedColors = new Set();
@@ -71,16 +72,28 @@ function getNoteForColor(hex){
   return note;
 }
 function getDensityForColor(hex){
-  var density=null;
-  for(var entry of _colorLedger){
-    if(entry[1]&&entry[1].color===hex&&Number.isFinite(Number(entry[1].density))&&Number(entry[1].density)>0)density=Number(entry[1].density);
-  }
-  return density||STEEL_DENSITY_KG_M3;
+  return STEEL_DENSITY_KG_M3;
 }
-function setDensityForColor(hex,value){
-  var density=Number(value);
-  if(!Number.isFinite(density)||density<=0)return;
-  for(var entry of _colorLedger){if(entry[1]&&entry[1].color===hex)entry[1].density=density;}
+function deserializeColorGroupMeta(raw){
+  var map=new Map(),items=raw;
+  if(typeof items==="string"){try{items=JSON.parse(items);}catch(e){items=null;}}
+  if(!Array.isArray(items))return map;
+  items.forEach(function(entry){
+    if(!entry||!/^#[0-9a-f]{6}$/i.test(entry.color||""))return;
+    map.set(entry.color.toUpperCase(),{work:String(entry.work||""),issueDate:/^\d{4}-\d{2}-\d{2}$/.test(entry.issueDate||"")?entry.issueDate:""});
+  });
+  return map;
+}
+function serializeColorGroupMeta(){
+  return Array.from(_colorGroupMeta.entries()).map(function(entry){return{color:entry[0],work:entry[1].work||"",issueDate:entry[1].issueDate||""};});
+}
+function updateColorGroupField(hex,field,value){
+  if(!/^#[0-9a-f]{6}$/i.test(hex)||!(field==="work"||field==="issueDate"))return;
+  if(field==="issueDate"&&value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))return;
+  hex=hex.toUpperCase();
+  var meta=_colorGroupMeta.get(hex)||{work:"",issueDate:""};
+  meta[field]=String(value||"").trim().slice(0,200);
+  _colorGroupMeta.set(hex,meta);
   saveLedger();
   if(window.MccCloud)window.MccCloud.scheduleDraft();
 }
@@ -492,7 +505,7 @@ function deserializeColorLedger(raw){
   return map;
 }
 function getLedgerKey(){return _ledgerViewId?"colorstudio_"+_ledgerViewId:null;}
-function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(serializeColorLedger()));}catch(e){}}
+function saveLedger(){var key=getLedgerKey();if(!key)return;try{localStorage.setItem(key,JSON.stringify(serializeColorLedger()));localStorage.setItem("colorstudio_meta_"+_ledgerViewId,JSON.stringify(serializeColorGroupMeta()));}catch(e){}}
 function restoreVolumeCacheFromLedger(){
   _colorLedger.forEach(function(item,key){
     if(item&&Number.isFinite(item.volumeM3)&&item.volumeM3>0)_ifcVolumeCache.set(key,item.volumeM3);
@@ -592,10 +605,13 @@ async function retryRecoverCurrentColors(api){
 async function loadLedger(viewId,viewSpec){
   var ledger=new Map(),cloudView=viewSpec;
   _cloudCachedLedger=new Map();
+  _colorGroupMeta=new Map();
   try{
     var raw=localStorage.getItem("colorstudio_"+viewId);
-    if(!raw){var state=localStorage.getItem("mcc_view_"+viewId);raw=state&&JSON.parse(state).colorLedger;}
+    var savedState=localStorage.getItem("mcc_view_"+viewId),parsedState=savedState&&JSON.parse(savedState);
+    if(!raw)raw=parsedState&&parsedState.colorLedger;
     ledger=deserializeColorLedger(raw);
+    _colorGroupMeta=deserializeColorGroupMeta(localStorage.getItem("colorstudio_meta_"+viewId)||(parsedState&&parsedState.colorGroupMeta));
   }catch(e){log("Không đọc được dữ liệu nhóm màu đã lưu: "+e.message,"warn");}
   if(!cloudView||!String(cloudView.description||"").includes("MCCQ1:")){
     try{cloudView=await (await getAPI()).view.getView(String(viewId));}catch(e){}
@@ -607,11 +623,12 @@ async function loadLedger(viewId,viewSpec){
     try{
       var remote=await window.MccCloud.loadView(viewId);
       if(remote&&String(viewId)===_currentViewId){
+        if(remote.state.colorGroupMeta)_colorGroupMeta=deserializeColorGroupMeta(remote.state.colorGroupMeta);
         _cloudCachedLedger=deserializeColorLedger(remote.state.colorLedger);
         if(remote.remapped)ledger=_cloudCachedLedger;
         else if(_cloudCachedLedger.size)ledger=new Map();
         if(remote.groups.length){
-          _cloudViewQuantities=new Map(remote.groups.map(function(g){return[g.color,{count:g.count,volume:g.volumeComplete?g.volumeM3:null,weight:g.weightComplete?g.weightKg:null,density:g.density,signature:g.signature}];}));
+          _cloudViewQuantities=new Map(remote.groups.map(function(g){return[g.color,{count:g.count,volume:g.volumeComplete?g.volumeM3:null,weight:g.weightComplete?g.weightKg:null,density:g.density,signature:g.signature,work:g.work||"",issueDate:g.issueDate||""}];}));
           if(remote.remapped){
             var currentGroups=buildColorGroups(ledger);
             currentGroups.forEach(function(info,color){var saved=_cloudViewQuantities.get(color),count=0;info.ids.forEach(function(ids){count+=ids.length;});if(saved&&saved.count===count)saved.signature=colorGroupSignature(info);});
@@ -947,7 +964,7 @@ async function resetViewer(){
   try{var api=await getAPI();try{await api.viewer.setObjectState(undefined,{color:"reset",visible:"reset"});}catch(e){}await api.viewer.reset();
   setStat("s-total","—");setStat("s-c1","—");setStat("s-c2","—");
   _map1=null;_map2=null;_selMap=null;
-  _colorLedger=new Map();_cloudViewQuantities=new Map();_ledgerViewId=null;_colorLedgerSummary=null;await renderColorLedger();
+  _colorLedger=new Map();_colorGroupMeta=new Map();_cloudViewQuantities=new Map();_ledgerViewId=null;_colorLedgerSummary=null;await renderColorLedger();
   [1,2].forEach(function(n){
     document.getElementById("qtyBtn"+n).disabled=true;
     document.getElementById("qtyResult"+n).classList.add("hidden");
@@ -1145,14 +1162,16 @@ function renderCloudQuantitySummary(el,expBtn){
   var volume=selected.reduce(function(sum,entry){return sum+(entry[1].volume||0);},0);
   var weight=selected.reduce(function(sum,entry){return sum+(entry[1].weight||0);},0);
   var html='<div style="padding:7px 8px;background:#fff8e1;color:#795548;font:10.5px sans-serif">Số liệu lúc lưu View. Viewer chưa trả đủ ID cấu kiện để chọn trên model.</div>'
-    +'<table style="width:100%;border-collapse:collapse;font:10.5px sans-serif"><thead><tr style="background:#f0f2f5"><th>✓</th><th>Màu</th><th>SL</th><th>V (m³)</th><th>KL (Tấn)</th></tr></thead><tbody>';
+    +'<table style="min-width:900px;width:100%;border-collapse:collapse;font:10.5px sans-serif"><thead><tr style="background:#f0f2f5"><th>✓</th><th>Màu</th><th>SL</th><th>V (m³)</th><th>KL (Tấn)</th><th>Nội dung công việc</th><th>Ngày phát hành</th></tr></thead><tbody>';
   rows.forEach(function(entry){
-    var color=entry[0],data=entry[1];
+    var color=entry[0],data=entry[1],meta=_colorGroupMeta.get(color.toUpperCase())||data;
     html+='<tr><td style="text-align:center"><input type="checkbox" data-color="'+color+'" '+(_ledgerSelectedColors.has(color)?'checked':'')+' onchange="toggleCloudQuantityColor(this.dataset.color,this.checked)"/></td>'
       +'<td style="text-align:center"><span style="display:inline-block;width:18px;height:18px;border:1px solid #aaa;border-radius:3px;background:'+color+'"></span></td>'
       +'<td style="text-align:right">'+fmtN(data.count)+'</td>'
       +'<td style="text-align:right">'+(Number.isFinite(data.volume)?data.volume.toLocaleString(undefined,{maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
-      +'<td style="text-align:right">'+(Number.isFinite(data.weight)?(data.weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td></tr>';
+      +'<td style="text-align:right">'+(Number.isFinite(data.weight)?(data.weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
+      +'<td><input type="text" class="ledger-work-input" maxlength="200" data-color="'+color+'" value="'+escapeHtml(meta.work||"")+'" placeholder="Nội dung..." onblur="updateColorGroupField(this.dataset.color,\'work\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
+      +'<td><input type="date" class="ledger-date-input" data-color="'+color+'" value="'+escapeHtml(meta.issueDate||"")+'" onchange="updateColorGroupField(this.dataset.color,\'issueDate\',this.value)"/></td></tr>';
   });
   html+='</tbody></table><div style="padding:7px 8px;background:#e8f0fe;font:11px sans-serif">Nhóm đã chọn: <b>'+selected.length+'</b> / '+rows.length+' · Thể tích: <b>'+(volumeReady?volume.toLocaleString(undefined,{maximumFractionDigits:3})+' m³':'Chưa có dữ liệu')+'</b> · Khối lượng: <b>'+(weightReady?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3})+' tấn':'Chưa có dữ liệu')+'</b></div>';
   el.innerHTML=html;
@@ -1171,7 +1190,7 @@ async function renderColorLedger(){
   await rebuildColorLedgerSummary();
   updateHeaderKPIs(Array.from(groups.keys()).map(function(color){var summary=_colorLedgerSummary.get(color);return{weight:summary&&summary.weight,complete:!!summary&&summary.weightMissing===0};}),_colorLedger.size);
   var colors=Array.from(groups.keys()).sort();
-  var html='<table style="width:100%;border-collapse:collapse">'
+  var html='<table style="min-width:950px;width:100%;border-collapse:collapse">'
     +'<thead><tr style="background:#f0f2f5;position:sticky;top:0;z-index:2">'
     +'<th style="text-align:center;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">✓</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">STT</th>'
@@ -1179,7 +1198,8 @@ async function renderColorLedger(){
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">SL</th>'
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">KL (Tấn)</th>'
     +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">V (m³)</th>'
-    +'<th style="text-align:right;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">ρ (kg/m³)</th>'
+    +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">Nội dung công việc</th>'
+    +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700">Ngày phát hành</th>'
     +'<th style="text-align:left;padding:6px 8px;border:1px solid #d0d3d8;font-size:10px;color:#5f6368;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Ghi chú</th>'
     +'</tr></thead><tbody>';
   colors.forEach(function(color,idx){
@@ -1189,7 +1209,7 @@ async function renderColorLedger(){
     var weight=summary?summary.weight:0;
     var volume=summary?summary.volume:0;
     var selected=_ledgerSelectedColors.has(color);
-    var density=summary&&summary.density?summary.density:"";
+    var meta=_colorGroupMeta.get(color.toUpperCase())||{work:"",issueDate:""};
     var note=summary?summary.note:(info?info.note||"":"");
     var bg=idx%2===0?"#ffffff":"#f7f8fa";
     html+='<tr style="background:'+bg+'">'
@@ -1201,7 +1221,8 @@ async function renderColorLedger(){
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+fmtN(count)+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.weightMissing===0?(weight/1000).toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#1a1c1e">'+(summary&&summary.volumeMissing===0?volume.toLocaleString(undefined,{minimumFractionDigits:3,maximumFractionDigits:3}):'Chưa có dữ liệu')+'</td>'
-      +'<td style="padding:5px 8px;border:1px solid #e2e5ea;text-align:right"><input type="number" min="0" step="1" data-color="'+color+'" value="'+density+'" placeholder="Nhập" title="Khối lượng riêng kg/m³; dùng khi IFC không có KL" onchange="setDensityForColor(this.dataset.color,this.value);renderColorLedger()" style="width:68px;text-align:right;border:1px solid #d0d3d8;border-radius:4px;padding:3px"/></td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-work-input" maxlength="200" data-color="'+color+'" value="'+escapeHtml(meta.work)+'" placeholder="Nội dung..." onblur="updateColorGroupField(this.dataset.color,\'work\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
+      +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="date" class="ledger-date-input" data-color="'+color+'" value="'+escapeHtml(meta.issueDate)+'" onchange="updateColorGroupField(this.dataset.color,\'issueDate\',this.value)"/></td>'
       +'<td style="padding:5px 8px;border:1px solid #e2e5ea"><input type="text" class="ledger-note-input" data-color="'+color+'" value="'+escapeHtml(note)+'" placeholder="Ghi chú..." onblur="updateColorNoteForColor(this.dataset.color,this.value.trim())" onkeydown="if(event.key===\'Enter\')this.blur()"/></td>'
       +'</tr>';
   });
@@ -1276,7 +1297,7 @@ async function exportLedger(){
   await rebuildColorLedgerSummary();
   var groups=buildColorGroups();
   if(!groups.size){log("✗ Bảng kê trống.","warn");return;}
-  var data=[["STT","Màu","SL","KL (Tấn)","Ghi chú"]];
+  var data=[["STT","Màu","SL","KL (Tấn)","Nội dung công việc","Ngày phát hành","Ghi chú"]];
   var colors=Array.from(groups.keys()).sort();
   colors.forEach(function(color,idx){
     var info=groups.get(color);
@@ -1284,7 +1305,8 @@ async function exportLedger(){
     var summary=_colorLedgerSummary&&_colorLedgerSummary.get(color);
     var weight=summary?summary.weight:0;
     var note=summary?summary.note:(info?info.note||"":"");
-    data.push([idx+1,color,count,parseFloat((weight/1000).toFixed(3)),note]);
+    var meta=_colorGroupMeta.get(color.toUpperCase())||{work:"",issueDate:""};
+    data.push([idx+1,color,count,summary&&summary.weightMissing===0?parseFloat((weight/1000).toFixed(3)):"",meta.work,meta.issueDate,note]);
   });
   var ws=XLSX.utils.aoa_to_sheet(data);
   var wb2=XLSX.utils.book_new();
@@ -1352,13 +1374,15 @@ function mccCloudCapture(name){
     note2:document.getElementById("noteInput2").value||"",
     note3:(document.getElementById("noteInput")||{}).value||"",
     selMapSerialized:_selMap?Array.from(_selMap.entries()).map(function(e){return{modelId:e[0],ids:e[1]};}):[],
-    colorLedger:serializeColorLedger().map(function(e){return{key:e.key,value:Object.assign({},e.value)};})
+    colorLedger:serializeColorLedger().map(function(e){return{key:e.key,value:Object.assign({},e.value)};}),
+    colorGroupMeta:serializeColorGroupMeta()
   };
   var groups=[];
   buildColorGroups().forEach(function(info,color){
     var count=0;info.ids.forEach(function(ids){count+=ids.length;});
     var s=_colorLedgerSummary&&_colorLedgerSummary.get(color);
-    groups.push({color:color,count:count,signature:colorGroupSignature(info),density:getDensityForColor(color),
+    var meta=_colorGroupMeta.get(color.toUpperCase())||{work:"",issueDate:""};
+    groups.push({color:color,count:count,signature:colorGroupSignature(info),density:getDensityForColor(color),work:meta.work,issueDate:meta.issueDate,
       volumeM3:s&&s.volumeMissing===0?s.volume:null,weightKg:s&&s.weightMissing===0?s.weight:null,
       volumeComplete:!!s&&s.volumeMissing===0,weightComplete:!!s&&s.weightMissing===0,note:getNoteForColor(color)});
   });
@@ -1374,7 +1398,8 @@ async function mccRestoreCloudDraft(state,groups,remapped){
   if(state.color3)setColor(3,state.color3);
   [1,2,3].forEach(function(n){var el=document.getElementById(n===3?"noteInput":"noteInput"+n);if(el)el.value=state["note"+n]||"";});
   checkApplyBtn(1);checkApplyBtn(2);
-  _cloudViewQuantities=new Map((groups||[]).map(function(g){return[g.color,{count:g.count,volume:g.volumeComplete?g.volumeM3:null,weight:g.weightComplete?g.weightKg:null,density:g.density,signature:g.signature}];}));
+  _cloudViewQuantities=new Map((groups||[]).map(function(g){return[g.color,{count:g.count,volume:g.volumeComplete?g.volumeM3:null,weight:g.weightComplete?g.weightKg:null,density:g.density,signature:g.signature,work:g.work||"",issueDate:g.issueDate||""}];}));
+  _colorGroupMeta=deserializeColorGroupMeta(state.colorGroupMeta);
   _colorLedger=remapped?deserializeColorLedger(state.colorLedger):new Map();
   _cloudCachedLedger=deserializeColorLedger(state.colorLedger);
   _colorLedgerSummary=null;
@@ -1452,6 +1477,7 @@ async function saveView(){
 
     // Reset canvas + bảng kê sau khi lưu
     _colorLedger=new Map();
+    _colorGroupMeta=new Map();
     _colorLedgerSummary=null;
     _cloudViewQuantities=new Map();
     _ledgerViewId=null;
@@ -1484,6 +1510,7 @@ async function loadView(viewId){
   try{var api=await getAPI();await api.viewer.setObjectState(undefined,{color:"reset"});}catch(e){}
   await sleep(300);
   _colorLedger=new Map();
+  _colorGroupMeta=deserializeColorGroupMeta((!remoteSnapshot&&localStorage.getItem("colorstudio_meta_"+viewId))||state.colorGroupMeta);
   _cloudViewQuantities=new Map();
   _colorLedgerSummary=null;
   await renderColorLedger();
@@ -1512,7 +1539,7 @@ async function loadView(viewId){
     // Đợi viewer load xong view mới rồi mới tô màu
     await sleep(2000);
     try{var savedView=await api.view.getView(viewId);_cloudViewQuantities=readViewQuantities(savedView&&savedView.description);}catch(e){_cloudViewQuantities=new Map();}
-    if(remoteSnapshot&&remoteSnapshot.groups.length)_cloudViewQuantities=new Map(remoteSnapshot.groups.map(function(g){return[g.color,{count:g.count,volume:g.volumeComplete?g.volumeM3:null,weight:g.weightComplete?g.weightKg:null,density:g.density,signature:g.signature}];}));
+    if(remoteSnapshot&&remoteSnapshot.groups.length)_cloudViewQuantities=new Map(remoteSnapshot.groups.map(function(g){return[g.color,{count:g.count,volume:g.volumeComplete?g.volumeM3:null,weight:g.weightComplete?g.weightKg:null,density:g.density,signature:g.signature,work:g.work||"",issueDate:g.issueDate||""}];}));
   }catch(e){log("⚠ Không chuyển được view trên viewer: "+(e&&e.message?e.message:String(e)),"warn");}
 
   // Khôi phục guids và tô màu lại
