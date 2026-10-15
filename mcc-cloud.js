@@ -11,7 +11,7 @@ const app = initializeApp({
 });
 const auth = getAuth(app);
 const db = getFirestore(app);
-const OWNER = 'heodaigia1983@gmail.com';
+const ALLOWED_EMAILS = new Set(['heodaigia1983@gmail.com', 'thaolevan@daidung.vn']);
 const CHUNK = 180000;
 let projectId = null;
 let pendingDraft = null;
@@ -25,10 +25,13 @@ function status(message, bad = false) {
   if (el) { el.textContent = message; el.style.color = bad ? '#d93025' : '#5f6368'; }
 }
 function safeId(value) { return encodeURIComponent(String(value || '')); }
+function isAllowedUser(user) {
+  return !!user && user.emailVerified === true && ALLOWED_EMAILS.has(String(user.email || '').trim().toLowerCase());
+}
 function projectRef() { return doc(db, 'mccProjects', safeId(projectId)); }
 function recordRef(kind, id) { return doc(projectRef(), kind, safeId(id)); }
 function requireReady() {
-  if (!activeUser || activeUser.email !== OWNER) throw new Error('Đăng nhập đúng tài khoản chủ Firebase để đồng bộ.');
+  if (!isAllowedUser(activeUser)) throw new Error('Đăng nhập tài khoản Google đã xác minh và được cấp quyền cloud để đồng bộ.');
   if (!projectId) throw new Error('Trimble chưa trả Project ID; chưa thể lưu dữ liệu lên Firebase.');
 }
 async function resolveProject() {
@@ -236,12 +239,12 @@ async function refreshDashboard() {
   } catch (error) { el.textContent = 'Chưa tải được dashboard: ' + error.message; }
 }
 onAuthStateChanged(auth, async user => {
-  activeUser = user && user.email === OWNER ? user : null;
+  activeUser = isAllowedUser(user) ? user : null;
   const loginButton = document.getElementById('cloudLogin');
   const logoutButton = document.getElementById('cloudLogout');
   if (loginButton) loginButton.hidden = !!activeUser;
   if (logoutButton) logoutButton.hidden = !activeUser;
-  status(activeUser ? 'Đã đăng nhập Firebase: ' + activeUser.email : 'Chưa đăng nhập Firebase. Dữ liệu chỉ đang lưu trên máy.');
+  status(activeUser ? 'Đã đăng nhập Firebase: ' + activeUser.email : user ? 'Tài khoản này chưa được cấp quyền cloud hoặc chưa xác minh email. Hãy đăng nhập bằng tài khoản được cho phép.' : 'Chưa đăng nhập Firebase. Dữ liệu chỉ đang lưu trên máy.', !!user && !activeUser);
   if (activeUser) {
     try {
       await resolveProject(); await refreshDashboard();

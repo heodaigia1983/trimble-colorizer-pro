@@ -1,7 +1,7 @@
 {
   "title": "DDC Model Control Center",
   "icon": "https://heodaigia1983.github.io/trimble-colorizer-pro/ddc-logo.png",
-  "url": "https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=40",
-  "description": "DDC Model Control Center v3.5 · Cập nhật 10/10/2026 16:00 UTC+7 · Chọn hai model IFC đang mở và so sánh trực tiếp",
+  "url": "https://heodaigia1983.github.io/trimble-colorizer-pro/index.html?v=41",
+  "description": "DDC Model Control Center v3.6 · Cập nhật 15/10/2026 15:45 UTC+7 · Bổ sung tài khoản công ty vào đăng nhập cloud",
   "enabled": true
 }

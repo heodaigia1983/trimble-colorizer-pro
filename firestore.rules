@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email in ['heodaigia1983@gmail.com', 'thaolevan@daidung.vn'];
+    }
+    match /mccProjects/{projectId}/{document=**} {
+      allow read, write: if isOwner();
+    }
+  }
+}
