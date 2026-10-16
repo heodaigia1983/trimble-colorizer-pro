@@ -149,7 +149,7 @@
     #apList::-webkit-scrollbar-thumb { background: #d0d3d8; border-radius: 4px; }
     #apList::-webkit-scrollbar-track { background: transparent; }
   </style>
-  <link rel="stylesheet" href="ddc-theme.css?v=41"/>
+  <link rel="stylesheet" href="ddc-theme.css?v=42"/>
 </head>
 <body class="mcc-ddc font-sans text-[12.5px] min-h-screen">
 
@@ -167,7 +167,7 @@
     <div>Phát triển bởi <strong id="metaUser">Lê Văn Thảo</strong></div>
     <div class="ddc-owner-phones">Liên hệ: <a href="tel:0566666847">05.666668.47</a> · <a href="tel:0777778653">0.77777.8653</a></div>
   </div>
-  <div class="ddc-build"><strong>Phiên bản v3.6</strong><span>Cập nhật: 15/10/2026 · 15:45 (UTC+7)</span></div>
+  <div class="ddc-build"><strong>Phiên bản v3.7</strong><span>Cập nhật: 16/10/2026 · 09:29 (UTC+7)</span></div>
 </header>
 
 <!-- MODEL KPI SUMMARY -->
@@ -535,6 +535,7 @@
           class="flex-1 px-1.5 py-2 rounded-lg font-sans text-xs font-semibold cursor-pointer transition-all duration-150 active:scale-95 mobile:min-h-[44px]"
           style="background:#e8f0fe;border:1px solid #c5d5f7;color:#1a73e8">Lưu View</button>
 </div>
+<div id="saveViewStatus" role="status" aria-live="polite" class="text-[10.5px] mt-2" style="line-height:1.5;overflow-wrap:anywhere"></div>
 
 <div class="mt-2.5">
   <div class="text-[10.5px] font-semibold mb-1" style="color:#5f6368">View đã lưu</div>
@@ -564,7 +565,7 @@
 <div class="ddc-section-label">Nhật ký thao tác</div>
 <div id="log"></div>
 
-<div class="ddc-footer">ĐẠI DŨNG · Model Control Center v3.6 · Lê Văn Thảo</div>
+<div class="ddc-footer">ĐẠI DŨNG · Model Control Center v3.7 · Lê Văn Thảo</div>
 
 <script>
   function toggleAccordion(headerEl) {
@@ -576,8 +577,8 @@
     if (content) content.classList.toggle('hidden', isActive);
   }
 </script>
-<script src="app.js?v=41"></script>
-<script src="model-compare.js?v=41"></script>
-<script type="module" src="mcc-cloud.js?v=41" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
+<script src="app.js?v=42"></script>
+<script src="model-compare.js?v=42"></script>
+<script type="module" src="mcc-cloud.js?v=42" onerror="document.getElementById('cloudStatus').textContent='Không tải được Firebase; kiểm tra mạng và mở lại tool.'"></script>
 </body>
 </html>

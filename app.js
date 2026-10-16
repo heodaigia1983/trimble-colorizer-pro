@@ -47,6 +47,8 @@ var _ledgerViewId = null;
 var _viewPollInterval = null;
 var _viewRecoveryTries = 0;
 var _loadingView = false;
+var _savingView = false;
+var _sessionSavedViews = [];
 var _lastQty = {};
 
 /* ═══ Option 4 — Assembly Position Prefix Filter (highlight tạm, KHÔNG ledger) ═══ */
@@ -1467,8 +1469,27 @@ async function mccRestoreCloudDraft(state,groups,remapped){
 }
 
 /* ═══ Save View ═══ */
+function saveViewStatus(message,bad){
+  var el=document.getElementById("saveViewStatus");
+  if(el){el.textContent=message;el.style.color=bad?"#b91c1c":"#5f6368";}
+}
+function rememberSavedView(id,name,state){
+  var record={id:String(id),name:name,ts:Date.now()},viewList=[];
+  _sessionSavedViews=_sessionSavedViews.filter(function(v){return v.id!==record.id;});
+  _sessionSavedViews.unshift(record);
+  try{viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");if(!Array.isArray(viewList))viewList=[];}catch(e){}
+  viewList=[record].concat(viewList.filter(function(v){return v.id!==record.id;})).slice(0,20);
+  try{localStorage.setItem("mcc_view_list",JSON.stringify(viewList));}catch(e){log("⚠ Chưa lưu được danh sách View trên máy: "+e.message,"warn");}
+  try{localStorage.setItem("mcc_view_"+id,JSON.stringify(state));return true;}
+  catch(e){log("⚠ Bộ nhớ trình duyệt chưa lưu được dữ liệu View; vẫn tiếp tục lưu Firebase: "+e.message,"warn");return false;}
+}
 async function saveView(){
-  if(_editingColorGroups.size){log("⚠ Hãy bấm Xác nhận cho nội dung công việc và ngày phát hành trước khi Lưu View.","warn");return;}
+  if(_savingView)return;
+  if(_editingColorGroups.size){saveViewStatus("Hãy bấm Xác nhận cho nội dung công việc/ngày phát hành đang sửa, rồi lưu lại.",true);log("⚠ Hãy bấm Xác nhận cho nội dung công việc và ngày phát hành trước khi Lưu View.","warn");return;}
+  _savingView=true;lockUI(true);
+  var saveButton=document.getElementById("saveBtn"),phase="kết nối Trimble",createdId=null,localSaved=false,cloudSaved=false;
+  if(saveButton)saveButton.textContent="Đang lưu View…";
+  saveViewStatus("Đang kết nối Trimble…");
   _loadingView=true;
   try{
     var api=await getAPI();
@@ -1479,12 +1500,19 @@ async function saveView(){
       name="ColorStudio "+n.getFullYear()+"-"+pad2(n.getMonth()+1)+"-"+pad2(n.getDate())+" "+pad2(n.getHours())+":"+pad2(n.getMinutes());
       if(inp)inp.value=name;
     }
-    if(_colorLedger.size)await rebuildColorLedgerSummary();
+    if(_colorLedger.size){phase="tổng hợp số liệu nhóm màu";saveViewStatus("Đang tổng hợp số liệu nhóm màu; model lớn có thể mất thời gian…");await rebuildColorLedgerSummary();}
     var description=makeViewDescription(),cloudRequested=description.indexOf("MCCQ1:")>=0;
+    var cloudPayload=mccCloudCapture(name),state=cloudPayload.state;
+    phase="tạo View trên Trimble";saveViewStatus("Đang tạo View trên Trimble…");
     var c=await api.view.createView({name:name,description:description});
     if(!c||!c.id)throw new Error("No view ID.");
+    createdId=String(c.id);
+    phase="lưu hình ảnh và trạng thái 3D";saveViewStatus("Đang lưu hình ảnh và trạng thái 3D…");
     await api.view.updateView({id:c.id});
-    await api.view.selectView(c.id);
+    _currentViewId=createdId;_ledgerViewId=createdId;saveLedger();
+    localSaved=rememberSavedView(c.id,name,state);
+    renderViewList();
+    try{await api.view.selectView(c.id);}catch(selectError){log("⚠ View đã lưu; chưa chuyển được Viewer sang View mới: "+selectError.message,"warn");}
     if(cloudRequested){
       var savedView=null;
       try{savedView=await api.view.getView(c.id);}catch(e){}
@@ -1508,25 +1536,12 @@ async function saveView(){
       log("⚠ Chưa đủ thể tích hoặc số nhóm vượt dung lượng mô tả View; số liệu vẫn lưu trên máy.","warn");
     }
 
-    // Lưu colorLedger vào view mới
-    _currentViewId=String(c.id);
-    _ledgerViewId=_currentViewId;
-    saveLedger();
-
-    // Lưu state vào localStorage
-    var cloudPayload=mccCloudCapture(name),state=cloudPayload.state;
-    localStorage.setItem("mcc_view_"+c.id,JSON.stringify(state));
-
-    // Cập nhật danh sách view
-    var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
-    viewList.unshift({id:c.id,name:name,ts:Date.now()});
-    viewList=viewList.slice(0,20);
-    localStorage.setItem("mcc_view_list",JSON.stringify(viewList));
-
     if(window.MccCloud){
-      try{await window.MccCloud.saveView(c.id,cloudPayload);log("✓ View và số liệu nhóm màu đã lưu trên Firebase.","ok");}
-      catch(cloudError){log("⚠ View đã lưu trên Trimble và máy; Firebase chưa lưu: "+cloudError.message,"warn");}
+      phase="đồng bộ View lên Firebase";saveViewStatus("View đã có trên Trimble. Đang lưu dữ liệu nhóm màu lên Firebase…");
+      try{await window.MccCloud.saveView(c.id,cloudPayload);cloudSaved=true;log("✓ View và số liệu nhóm màu đã lưu trên Firebase.","ok");}
+      catch(cloudError){log("⚠ View đã lưu trên Trimble; Firebase chưa lưu: "+cloudError.message,"warn");}
     }
+    if(!localSaved&&!cloudSaved){saveViewStatus("View đã có trên Trimble nhưng chưa lưu được dữ liệu nhóm màu trên máy/cloud. Màu hiện tại được giữ nguyên; xem LOG bên dưới.",true);return;}
 
     // Reset canvas + bảng kê sau khi lưu
     _colorLedger=new Map();
@@ -1540,9 +1555,10 @@ async function saveView(){
     if(window.MccCloud)window.MccCloud.scheduleDraft();
 
     log('✓ View đã lưu: "'+name+'" — Canvas đã reset, sẵn sàng tô cho view kế tiếp.',"ok");
+    saveViewStatus('Đã lưu "'+name+'" trên Trimble'+(cloudSaved?" và Firebase.":"; Firebase chưa đồng bộ."),!cloudSaved);
     renderViewList();
-  }catch(e){log("✗ "+(e&&e.message?e.message:String(e)),"err");}
-  finally{_loadingView=false;}
+  }catch(e){var message="Lỗi khi "+phase+": "+(e&&e.message?e.message:String(e));if(createdId)message+=". Trimble đã cấp View ID "+createdId+"; giữ nguyên dữ liệu hiện tại.";saveViewStatus(message,true);log("✗ "+message,"err");}
+  finally{_loadingView=false;_savingView=false;lockUI(false);if(saveButton)saveButton.textContent="Lưu View";}
 }
 
 async function loadView(viewId){
@@ -1648,7 +1664,9 @@ async function loadView(viewId){
 function renderViewList(){
   var container=document.getElementById("viewListContainer");
   if(!container)return;
-  var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
+  var viewList=[];
+  try{viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");if(!Array.isArray(viewList))viewList=[];}catch(e){}
+  _sessionSavedViews.forEach(function(v){if(!viewList.some(function(x){return x.id===v.id;}))viewList.unshift(v);});
   if(!viewList.length){
     container.innerHTML='<div class="text-[10.5px] text-slate-400 italic">Chưa có view nào được lưu.</div>';
     return;
@@ -1665,6 +1683,7 @@ function renderViewList(){
 }
 
 function deleteViewRecord(viewId){
+  _sessionSavedViews=_sessionSavedViews.filter(function(v){return v.id!==String(viewId);});
   localStorage.removeItem("mcc_view_"+viewId);
   var viewList=JSON.parse(localStorage.getItem("mcc_view_list")||"[]");
   viewList=viewList.filter(function(v){return v.id!==viewId;});
